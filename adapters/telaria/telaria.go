@@ -186,6 +186,9 @@ func (a *TelariaAdapter) MakeRequests(requestIn *openrtb2.BidRequest, reqInfo *a
 
 		seatCode := telariaImpExt.SeatCode
 
+		if telariaImpExt.SspID == "" {
+			telariaImpExt.SspID = "ads"
+		}
 		// resolve the macros in the endpoint template
 		endpoint, err := macros.ResolveMacros(a.endpointTemplate, telariaImpExt)
 		if err != nil {

@@ -16,6 +16,10 @@
     "originalPublisherid": {
       "type": "string",
       "description": "publisher ID from the original request"
+    },
+    "seatID": {
+      "type": "string",
+      "description": "seat ID to use in the endpoint"
     }
   },
   "required": ["seatCode"]

@@ -18,7 +18,7 @@ def buildImage(name, dcr) {
         --cache-from ${dcr}/${name}:${SRC_BRANCH} \
         --push .
     """
-    if (env.CURRENT_BRANCH == 'master') {
+    if (env.CURRENT_BRANCH == 'release') {
         sh "crane tag ${dcr}/${name}:${GIT_COMMIT} latest --insecure"
     }
 }
@@ -63,7 +63,7 @@ pipeline {
         stage('Release Stable') {
             when {
                 allOf {
-                    branch 'master'
+                    branch 'release'
                 }
             }
             steps {

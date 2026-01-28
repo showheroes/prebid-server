@@ -17,9 +17,9 @@
       "type": "string",
       "description": "publisher ID from the original request"
     },
-    "seatID": {
+    "sspID": {
       "type": "string",
-      "description": "seat ID to use in the endpoint"
+      "description": "ssp ID to use in the endpoint"
     }
   },
   "required": ["seatCode"]

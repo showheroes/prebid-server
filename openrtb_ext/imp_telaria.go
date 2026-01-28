@@ -5,6 +5,6 @@ import "encoding/json"
 type ExtImpTelaria struct {
 	AdCode   string          `json:"adCode,omitempty"`
 	SeatCode string          `json:"seatCode"`
-	SeatID   string          `json:"seatID,omitempty"`
+	SspID    string          `json:"sspID,omitempty"`
 	Extra    json.RawMessage `json:"extra,omitempty"`
 }

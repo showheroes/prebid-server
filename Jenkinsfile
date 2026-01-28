@@ -1,4 +1,4 @@
-@Library('shRelease@try-fetching-tags') _
+@Library('shRelease') _
 
 def dcr = "dcr.jenkins:5000"
 def dockerImageName = "prebid-server"

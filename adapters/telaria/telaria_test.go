@@ -20,11 +20,13 @@ func TestEndpointFromConfig(t *testing.T) {
 
 	bidderTelari := bidder.(*TelariaAdapter)
 
-	assert.Equal(t, "providedurl.com", bidderTelari.URI)
+	assert.Equal(t, "providedurl.com", bidderTelari.endpointTemplate.Tree.Root.String())
 }
 
 func TestJsonSamples(t *testing.T) {
-	bidder, buildErr := Builder(openrtb_ext.BidderTelaria, config.Adapter{}, config.Server{ExternalUrl: "http://hosturl.com", GvlID: 1, DataCenter: "2"})
+	bidder, buildErr := Builder(openrtb_ext.BidderTelaria, config.Adapter{
+		Endpoint: "https://ads.tremorhub.com/ad/rtb/prebid",
+	}, config.Server{ExternalUrl: "http://hosturl.com", GvlID: 1, DataCenter: "2"})
 
 	if buildErr != nil {
 		t.Fatalf("Builder returned unexpected error %v", buildErr)

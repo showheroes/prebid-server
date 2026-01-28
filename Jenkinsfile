@@ -1,54 +1,62 @@
-// Check out https://github.com/showheroes/jenkins-shared-libs
 @Library('shRelease') _
 
+def dcr = "dcr.jenkins:5000"
 def dockerImageName = "prebid-server"
-def pushConfig = [
-    "local_image": "$dockerImageName",
-    "target_image": "$dockerImageName",
-    "gar_locations": "europe,us,asia",
-    "gar_repo": "viralize-143916/monetize"
-]
-def releaseLabel = "release-candidate" // <- new tag/images apply only to PR with this label
+def gar_locations = ["us", "europe", "asia"]
+def gar_repo = "viralize-143916/monetize"
 def releaseConfig = [
     "default_release": "minor"
 ]
+def buildImage(name, dcr) {
+    sh """
+        docker build --network host \
+        --cache-to type=inline \
+        -t ${dcr}/${name}:${GIT_COMMIT} \
+        -t ${dcr}/${name}:${CURRENT_BRANCH} \
+        --cache-from ${dcr}/${name}:latest \
+        --cache-from ${dcr}/${name}:${CURRENT_BRANCH} \
+        --cache-from ${dcr}/${name}:${SRC_BRANCH} \
+        --push .
+    """
+    if (env.CURRENT_BRANCH == 'master') {
+        sh "crane tag ${dcr}/${name}:${GIT_COMMIT} latest --insecure"
+    }
+}
 
 pipeline {
-    // Check out https://github.com/showheroes/jenkins-agents
-    agent { label 'jnlp_dind_buildx' }
+    agent { label "jnlp_dind_v2" }
     environment {
+        CURRENT_BRANCH = "${env.CHANGE_BRANCH ?: env.BRANCH_NAME}"
         GITHUB_TOKEN = credentials('SHBOT_GITHUB_RELEASE_TOKEN')
-        GCE_SERVICE_ACCOUNT_KEY = credentials('JENKINS_GCP_SA_KEY')
+        SRC_BRANCH = shRelease.getPullRequestInfo().head.ref.trim()
         RELEASE_TAG = shRelease.getReleaseTag(releaseConfig)
     }
 
     stages {
-       stage('Docker Build') {
-           steps {
-               // Build the Docker image
-               script {
-                    def lastRelease = shRelease.getLastRelease()
-                    echo "Last stable release is: $lastRelease"
-                    def prID = shRelease.getPullRequestID()
-                    echo "PR ID is: $prID"
-                    sh "docker buildx build --network=host . -t ${dockerImageName}"
-               }
-           }
-       }
+        stage('Build image') {
+            steps {
+                script {
+                    buildImage(dockerImageName, dcr)
+                }
+            }
+        }
 
         stage('Release Candidate') {
             when {
                 allOf {
                     changeRequest();
-                    expression { shRelease.prHasLabel(releaseLabel) }
                 }
             }
             steps {
                 script {
                     shRelease.releaseCandidate(env.RELEASE_TAG)
-                    sh 'gcloud auth activate-service-account --key-file=${GCE_SERVICE_ACCOUNT_KEY}'
-                    pushConfig["target_tags"] = env.RELEASE_TAG
-                    shRelease.pushDockerImage(pushConfig)
+                    shRelease.copyDockerImage(
+                        source_image: "${dcr}/${dockerImageName}:${GIT_COMMIT}",
+                        target_image: dockerImageName,
+                        gar_locations: gar_locations,
+                        gar_repo: gar_repo,
+                        target_tags: [env.RELEASE_TAG]
+                    )
                 }
             }
         }
@@ -56,15 +64,18 @@ pipeline {
             when {
                 allOf {
                     branch 'master'
-                    expression { shRelease.prHasLabel(releaseLabel) }
                 }
             }
             steps {
                 script {
                     shRelease.releaseStable(env.RELEASE_TAG)
-                    sh 'gcloud auth activate-service-account --key-file=${GCE_SERVICE_ACCOUNT_KEY}'
-                    pushConfig["target_tags"] = "${env.RELEASE_TAG},latest"
-                    shRelease.pushDockerImage(pushConfig)
+                    shRelease.copyDockerImage(
+                        source_image: "${dcr}/${dockerImageName}:${GIT_COMMIT}",
+                        target_image: dockerImageName,
+                        gar_locations: gar_locations,
+                        gar_repo: gar_repo,
+                        target_tags: [env.RELEASE_TAG, 'latest']
+                    )
                 }
             }
         }

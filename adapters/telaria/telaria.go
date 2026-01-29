@@ -239,7 +239,7 @@ func (a *TelariaAdapter) MakeRequests(requestIn *openrtb2.BidRequest, reqInfo *a
 	return requestData, nil
 }
 
-// copy from the 'rubicon' bidder
+// resolveBidFloor function returns converted price for the bidfloor, if the incoming request is not in USD. It's a copy from the 'rubicon' bidder
 func resolveBidFloor(bidFloor float64, bidFloorCur string, reqInfo *adapters.ExtraRequestInfo) (float64, error) {
 	if bidFloor > 0 && bidFloorCur != "" && bidFloorCur != bidderCurrency {
 		return reqInfo.ConvertCurrency(bidFloor, bidFloorCur, bidderCurrency)

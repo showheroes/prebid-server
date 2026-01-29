@@ -16,6 +16,10 @@
     "originalPublisherid": {
       "type": "string",
       "description": "publisher ID from the original request"
+    },
+    "sspID": {
+      "type": "string",
+      "description": "ssp ID to use in the endpoint"
     }
   },
   "required": ["seatCode"]

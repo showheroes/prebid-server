@@ -192,7 +192,7 @@ func (a *TelariaAdapter) MakeRequests(requestIn *openrtb2.BidRequest, reqInfo *a
 		// resolve the macros in the endpoint template
 		endpoint, err := macros.ResolveMacros(a.endpointTemplate, telariaImpExt)
 		if err != nil {
-			return nil, []error{&errortypes.BadServerResponse{Message: fmt.Sprintf("Error resolving macros: %v", err)}}
+			return nil, []error{&errortypes.BadInput{Message: fmt.Sprintf("Error resolving macros: %v", err)}}
 		}
 
 		// Swap the tagID with adCode

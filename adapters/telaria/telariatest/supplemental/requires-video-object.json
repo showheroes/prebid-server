@@ -1,7 +1,7 @@
 {
   "expectedMakeRequestsErrors": [
     {
-      "value": "Telaria: Only Supports Video",
+      "value": "Telaria: Only video inventory is supported",
       "comparison": "literal"
     }
   ],

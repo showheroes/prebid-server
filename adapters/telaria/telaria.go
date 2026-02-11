@@ -249,10 +249,6 @@ func resolveBidFloor(bidFloor float64, bidFloorCur string, reqInfo *adapters.Ext
 }
 
 func (a *TelariaAdapter) CheckResponseStatusCodes(response *adapters.ResponseData) error {
-	if response.StatusCode == http.StatusNoContent {
-		return &errortypes.BadInput{Message: "Telaria: Invalid Bid Request received by the server"}
-	}
-
 	if response.StatusCode == http.StatusBadRequest {
 		return &errortypes.BadInput{
 			Message: fmt.Sprintf("Telaria: Unexpected status code: [ %d ] ", response.StatusCode),
@@ -275,6 +271,10 @@ func (a *TelariaAdapter) CheckResponseStatusCodes(response *adapters.ResponseDat
 }
 
 func (a *TelariaAdapter) MakeBids(internalRequest *openrtb2.BidRequest, externalRequest *adapters.RequestData, response *adapters.ResponseData) (*adapters.BidderResponse, []error) {
+	if response.StatusCode == http.StatusNoContent {
+		return nil, nil
+	}
+
 	httpStatusError := a.CheckResponseStatusCodes(response)
 	if httpStatusError != nil {
 		return nil, []error{httpStatusError}

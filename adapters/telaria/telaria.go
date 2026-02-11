@@ -5,19 +5,21 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"text/template"
 
 	"github.com/prebid/openrtb/v20/openrtb2"
 	"github.com/prebid/prebid-server/v3/adapters"
 	"github.com/prebid/prebid-server/v3/config"
 	"github.com/prebid/prebid-server/v3/errortypes"
+	"github.com/prebid/prebid-server/v3/macros"
 	"github.com/prebid/prebid-server/v3/openrtb_ext"
 	"github.com/prebid/prebid-server/v3/util/jsonutil"
 )
 
-const Endpoint = "https://ads.tremorhub.com/ad/rtb/prebid"
+const bidderCurrency = "USD"
 
 type TelariaAdapter struct {
-	URI string
+	endpointTemplate *template.Template
 }
 
 // This will be part of imp[i].ext when this adapter calls out the Telaria Ad Server
@@ -30,11 +32,6 @@ type telariaBidExt struct {
 	Extra json.RawMessage `json:"extra,omitempty"`
 }
 
-// Endpoint for Telaria Ad server
-func (a *TelariaAdapter) FetchEndpoint() string {
-	return a.URI
-}
-
 // Checker method to ensure len(request.Imp) > 0
 func (a *TelariaAdapter) CheckHasImps(request *openrtb2.BidRequest) error {
 	if len(request.Imp) == 0 {
@@ -43,29 +40,6 @@ func (a *TelariaAdapter) CheckHasImps(request *openrtb2.BidRequest) error {
 		}
 		return err
 	}
-	return nil
-}
-
-// Checking if Imp[i].Video exists and Imp[i].Banner doesn't exist
-func (a *TelariaAdapter) CheckHasVideoObject(request *openrtb2.BidRequest) error {
-	hasVideoObject := false
-
-	for _, imp := range request.Imp {
-		if imp.Banner != nil {
-			return &errortypes.BadInput{
-				Message: "Telaria: Banner not supported",
-			}
-		}
-
-		hasVideoObject = hasVideoObject || imp.Video != nil
-	}
-
-	if !hasVideoObject {
-		return &errortypes.BadInput{
-			Message: "Telaria: Only Supports Video",
-		}
-	}
-
 	return nil
 }
 
@@ -175,72 +149,106 @@ func (a *TelariaAdapter) MakeRequests(requestIn *openrtb2.BidRequest, reqInfo *a
 		return nil, []error{noImps}
 	}
 
-	// ensure that the request has a Video object
-	if noVideoObjectError := a.CheckHasVideoObject(&request); noVideoObjectError != nil {
-		return nil, []error{noVideoObjectError}
-	}
+	// clear out any specified currency
+	request.Cur = nil
 
-	var seatCode string
 	originalPublisherID := a.FetchOriginalPublisherID(&request)
 
-	var telariaImpExt *openrtb_ext.ExtImpTelaria
-	var err error
+	headers := GetHeaders(&request)
+	var requestData []*adapters.RequestData
+	for _, imp := range request.Imp {
+		if imp.Banner != nil {
+			return nil, []error{&errortypes.BadInput{
+				Message: "Telaria: Banner not supported",
+			}}
+		}
+		if imp.Video == nil {
+			return nil, []error{&errortypes.BadInput{
+				Message: "Telaria: Only video inventory is supported",
+			}}
+		}
 
-	var imp = request.Imp[0]
-	// fetch adCode & seatCode from imp[i].ext
-	telariaImpExt, err = a.FetchTelariaExtImpParams(&imp)
-	if err != nil {
-		return nil, []error{err}
-	}
-
-	seatCode = telariaImpExt.SeatCode
-
-	// move the original tagId and the original publisher.id into the imp[i].ext object
-	imp.Ext, err = json.Marshal(&ImpressionExtOut{imp.TagID, originalPublisherID})
-	if err != nil {
-		return nil, []error{err}
-	}
-
-	if telariaImpExt == nil {
-		return nil, []error{&errortypes.BadInput{Message: "Telaria: nil ExtImpTelaria object"}}
-	}
-	// Swap the tagID with adCode
-	imp.TagID = telariaImpExt.AdCode
-
-	// Add the Extra from Imp to the top level Ext
-	if telariaImpExt.Extra != nil {
-		request.Ext, err = json.Marshal(&telariaBidExt{Extra: telariaImpExt.Extra})
+		copyRequest := request
+		// fetch adCode & seatCode from imp[i].ext
+		telariaImpExt, err := a.FetchTelariaExtImpParams(&imp)
 		if err != nil {
 			return nil, []error{err}
 		}
+		if telariaImpExt == nil {
+			return nil, []error{&errortypes.BadInput{Message: "Telaria: nil ExtImpTelaria object"}}
+		}
+
+		// move the original tagId and the original publisher.id into the imp[i].ext object
+		imp.Ext, err = json.Marshal(&ImpressionExtOut{imp.TagID, originalPublisherID})
+		if err != nil {
+			return nil, []error{err}
+		}
+
+		seatCode := telariaImpExt.SeatCode
+
+		if telariaImpExt.SspID == "" {
+			telariaImpExt.SspID = "ads"
+		}
+		// resolve the macros in the endpoint template
+		endpoint, err := macros.ResolveMacros(a.endpointTemplate, telariaImpExt)
+		if err != nil {
+			return nil, []error{&errortypes.BadInput{Message: fmt.Sprintf("Error resolving macros: %v", err)}}
+		}
+
+		// Swap the tagID with adCode
+		imp.TagID = telariaImpExt.AdCode
+
+		// Add the Extra from Imp to the top level Ext
+		if telariaImpExt.Extra != nil {
+			copyRequest.Ext, err = json.Marshal(&telariaBidExt{Extra: telariaImpExt.Extra})
+			if err != nil {
+				return nil, []error{err}
+			}
+		}
+
+		resolvedBidFloor, err := resolveBidFloor(imp.BidFloor, imp.BidFloorCur, reqInfo)
+		if err != nil {
+			return nil, []error{err}
+		}
+		// force USD
+		imp.BidFloor = resolvedBidFloor
+		imp.BidFloorCur = ""
+		if imp.BidFloor > 0.0 {
+			imp.BidFloorCur = bidderCurrency
+		}
+
+		copyRequest.Imp = []openrtb2.Imp{imp}
+		// Add seatCode to <Site/App>.Publisher.ID
+		siteObject, appObject := a.PopulatePublisherId(&copyRequest, seatCode)
+
+		copyRequest.Site = siteObject
+		copyRequest.App = appObject
+		reqJSON, err := json.Marshal(copyRequest)
+		if err != nil {
+			return nil, []error{err}
+		}
+		requestData = append(requestData, &adapters.RequestData{
+			Method:  "POST",
+			Uri:     endpoint,
+			Body:    reqJSON,
+			Headers: *headers,
+			ImpIDs:  openrtb_ext.GetImpIDs(copyRequest.Imp),
+		})
 	}
-	request.Imp = []openrtb2.Imp{imp}
 
-	// Add seatCode to <Site/App>.Publisher.ID
-	siteObject, appObject := a.PopulatePublisherId(&request, seatCode)
+	return requestData, nil
+}
 
-	request.Site = siteObject
-	request.App = appObject
-
-	reqJSON, err := json.Marshal(request)
-	if err != nil {
-		return nil, []error{err}
+// resolveBidFloor function returns converted price for the bidfloor, if the incoming request is not in USD. It's a copy from the 'rubicon' bidder
+func resolveBidFloor(bidFloor float64, bidFloorCur string, reqInfo *adapters.ExtraRequestInfo) (float64, error) {
+	if bidFloor > 0 && bidFloorCur != "" && bidFloorCur != bidderCurrency {
+		return reqInfo.ConvertCurrency(bidFloor, bidFloorCur, bidderCurrency)
 	}
 
-	return []*adapters.RequestData{{
-		Method:  "POST",
-		Uri:     a.FetchEndpoint(),
-		Body:    reqJSON,
-		Headers: *GetHeaders(&request),
-		ImpIDs:  openrtb_ext.GetImpIDs(request.Imp),
-	}}, nil
+	return bidFloor, nil
 }
 
 func (a *TelariaAdapter) CheckResponseStatusCodes(response *adapters.ResponseData) error {
-	if response.StatusCode == http.StatusNoContent {
-		return &errortypes.BadInput{Message: "Telaria: Invalid Bid Request received by the server"}
-	}
-
 	if response.StatusCode == http.StatusBadRequest {
 		return &errortypes.BadInput{
 			Message: fmt.Sprintf("Telaria: Unexpected status code: [ %d ] ", response.StatusCode),
@@ -263,6 +271,9 @@ func (a *TelariaAdapter) CheckResponseStatusCodes(response *adapters.ResponseDat
 }
 
 func (a *TelariaAdapter) MakeBids(internalRequest *openrtb2.BidRequest, externalRequest *adapters.RequestData, response *adapters.ResponseData) (*adapters.BidderResponse, []error) {
+	if response.StatusCode == http.StatusNoContent {
+		return nil, nil
+	}
 
 	httpStatusError := a.CheckResponseStatusCodes(response)
 	if httpStatusError != nil {
@@ -278,15 +289,17 @@ func (a *TelariaAdapter) MakeBids(internalRequest *openrtb2.BidRequest, external
 		}}
 	}
 
+	if len(bidResp.SeatBid) == 0 {
+		return nil, []error{&errortypes.BadServerResponse{
+			Message: "Empty bid request",
+		}}
+	}
+
 	bidResponse := adapters.NewBidderResponseWithBidsCapacity(len(bidResp.SeatBid[0].Bid))
 	sb := bidResp.SeatBid[0]
 
 	for i := range sb.Bid {
 		bid := sb.Bid[i]
-		if i >= len(internalRequest.Imp) {
-			break
-		}
-		bid.ImpID = internalRequest.Imp[i].ID
 		bidResponse.Bids = append(bidResponse.Bids, &adapters.TypedBid{
 			Bid:     &bid,
 			BidType: openrtb_ext.BidTypeVideo,
@@ -297,13 +310,12 @@ func (a *TelariaAdapter) MakeBids(internalRequest *openrtb2.BidRequest, external
 
 // Builder builds a new instance of the Telaria adapter for the given bidder with the given config.
 func Builder(bidderName openrtb_ext.BidderName, config config.Adapter, server config.Server) (adapters.Bidder, error) {
-	endpoint := config.Endpoint
-	if endpoint == "" {
-		endpoint = Endpoint // Hardcoded default
+	templ, err := template.New("endpointTemplate").Parse(config.Endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse endpoint url template: %v", err)
 	}
 
-	bidder := &TelariaAdapter{
-		URI: endpoint,
-	}
-	return bidder, nil
+	return &TelariaAdapter{
+		endpointTemplate: templ,
+	}, nil
 }

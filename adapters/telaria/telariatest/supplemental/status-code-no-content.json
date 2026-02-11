@@ -75,10 +75,5 @@
     }
   }],
   "expectedBidResponses": [],
-  "expectedMakeBidsErrors": [
-    {
-      "value": "Telaria: Invalid Bid Request received by the server",
-      "comparison": "literal"
-    }
-  ]
+  "expectedMakeBidsErrors": []
 }

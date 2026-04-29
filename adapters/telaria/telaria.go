@@ -154,8 +154,36 @@ func (a *TelariaAdapter) MakeRequests(requestIn *openrtb2.BidRequest, reqInfo *a
 
 	originalPublisherID := a.FetchOriginalPublisherID(&request)
 
-	headers := GetHeaders(&request)
-	var requestData []*adapters.RequestData
+	// All imps in a pod share the same seatCode and endpoint: extract them
+	// from the first imp and use them for the single outgoing request.
+	firstImpExt, err := a.FetchTelariaExtImpParams(&request.Imp[0])
+	if err != nil {
+		return nil, []error{err}
+	}
+	if firstImpExt == nil {
+		return nil, []error{&errortypes.BadInput{Message: "Telaria: nil ExtImpTelaria object"}}
+	}
+
+	seatCode := firstImpExt.SeatCode
+
+	if firstImpExt.SspID == "" {
+		firstImpExt.SspID = "ads"
+	}
+	endpoint, err := macros.ResolveMacros(a.endpointTemplate, firstImpExt)
+	if err != nil {
+		return nil, []error{&errortypes.BadInput{Message: fmt.Sprintf("Error resolving macros: %v", err)}}
+	}
+
+	// Add the Extra from the first imp to the top-level request Ext.
+	if firstImpExt.Extra != nil {
+		request.Ext, err = json.Marshal(&telariaBidExt{Extra: firstImpExt.Extra})
+		if err != nil {
+			return nil, []error{err}
+		}
+	}
+
+	// Process every imp: validate, rewrite ext and tagID, convert bidfloor to USD.
+	processedImps := make([]openrtb2.Imp, 0, len(request.Imp))
 	for _, imp := range request.Imp {
 		if imp.Banner != nil {
 			return nil, []error{&errortypes.BadInput{
@@ -168,8 +196,6 @@ func (a *TelariaAdapter) MakeRequests(requestIn *openrtb2.BidRequest, reqInfo *a
 			}}
 		}
 
-		copyRequest := request
-		// fetch adCode & seatCode from imp[i].ext
 		telariaImpExt, err := a.FetchTelariaExtImpParams(&imp)
 		if err != nil {
 			return nil, []error{err}
@@ -178,33 +204,14 @@ func (a *TelariaAdapter) MakeRequests(requestIn *openrtb2.BidRequest, reqInfo *a
 			return nil, []error{&errortypes.BadInput{Message: "Telaria: nil ExtImpTelaria object"}}
 		}
 
-		// move the original tagId and the original publisher.id into the imp[i].ext object
+		// Move the original tagID and publisher ID into imp.ext.
 		imp.Ext, err = json.Marshal(&ImpressionExtOut{imp.TagID, originalPublisherID})
 		if err != nil {
 			return nil, []error{err}
 		}
 
-		seatCode := telariaImpExt.SeatCode
-
-		if telariaImpExt.SspID == "" {
-			telariaImpExt.SspID = "ads"
-		}
-		// resolve the macros in the endpoint template
-		endpoint, err := macros.ResolveMacros(a.endpointTemplate, telariaImpExt)
-		if err != nil {
-			return nil, []error{&errortypes.BadInput{Message: fmt.Sprintf("Error resolving macros: %v", err)}}
-		}
-
-		// Swap the tagID with adCode
+		// Swap tagID with adCode.
 		imp.TagID = telariaImpExt.AdCode
-
-		// Add the Extra from Imp to the top level Ext
-		if telariaImpExt.Extra != nil {
-			copyRequest.Ext, err = json.Marshal(&telariaBidExt{Extra: telariaImpExt.Extra})
-			if err != nil {
-				return nil, []error{err}
-			}
-		}
 
 		resolvedBidFloor, err := resolveBidFloor(imp.BidFloor, imp.BidFloorCur, reqInfo)
 		if err != nil {
@@ -217,26 +224,27 @@ func (a *TelariaAdapter) MakeRequests(requestIn *openrtb2.BidRequest, reqInfo *a
 			imp.BidFloorCur = bidderCurrency
 		}
 
-		copyRequest.Imp = []openrtb2.Imp{imp}
-		// Add seatCode to <Site/App>.Publisher.ID
-		siteObject, appObject := a.PopulatePublisherId(&copyRequest, seatCode)
-
-		copyRequest.Site = siteObject
-		copyRequest.App = appObject
-		reqJSON, err := json.Marshal(copyRequest)
-		if err != nil {
-			return nil, []error{err}
-		}
-		requestData = append(requestData, &adapters.RequestData{
-			Method:  "POST",
-			Uri:     endpoint,
-			Body:    reqJSON,
-			Headers: *headers,
-			ImpIDs:  openrtb_ext.GetImpIDs(copyRequest.Imp),
-		})
+		processedImps = append(processedImps, imp)
 	}
 
-	return requestData, nil
+	// Send all imps in a single request instead of one request per imp.
+	request.Imp = processedImps
+	siteObject, appObject := a.PopulatePublisherId(&request, seatCode)
+	request.Site = siteObject
+	request.App = appObject
+
+	reqJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	return []*adapters.RequestData{{
+		Method:  "POST",
+		Uri:     endpoint,
+		Body:    reqJSON,
+		Headers: *GetHeaders(&request),
+		ImpIDs:  openrtb_ext.GetImpIDs(request.Imp),
+	}}, nil
 }
 
 // resolveBidFloor function returns converted price for the bidfloor, if the incoming request is not in USD. It's a copy from the 'rubicon' bidder

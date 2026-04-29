@@ -127,105 +127,7 @@
                 "originalTagid": "ogTAGID",
                 "originalPublisherid": "123456789"
               }
-            }
-          ],
-          "app": {
-            "id": "123456789",
-            "name": "Awesome App",
-            "bundle": "com.app.awesome",
-            "domain": "awesomeapp.com",
-            "cat": [
-              "IAB22-1"
-            ],
-            "publisher": {
-              "id": "my-seatcode"
-            }
-          },
-          "user": {
-            "buyeruid": "awesome-user"
-          },
-          "tmax": 1000
-        },
-        "impIDs":["0_0"]
-      },
-      "mockResponse": {
-        "status": 200,
-        "body": {
-          "id": "awesome-resp-id",
-          "seatbid": [
-            {
-              "bid": [
-                {
-                  "id": "a3ae1b4e2fc24a4fb45540082e98e161",
-                  "impid": "0_0",
-                  "price": 3.5,
-                  "adm": "awesome-markup",
-                  "adomain": [
-                    "awesome.com"
-                  ],
-                  "crid": "20",
-                  "w": 1280,
-                  "h": 720,
-                  "ext": {
-                    "prebid": {
-                      "type": "video"
-                    }
-                  }
-                }
-              ],
-              "seat": "telaria"
-            }
-          ],
-          "cur": "USD",
-          "ext": {
-            "responsetimemillis": {
-              "telaria": 154
             },
-            "tmaxrequest": 1000
-          }
-        }
-      }
-    },
-    {
-      "expectedRequest": {
-        "headers": {
-          "Content-Type": [
-            "application/json;charset=utf-8"
-          ],
-          "Accept": [
-            "application/json"
-          ],
-          "X-Openrtb-Version": [
-            "2.5"
-          ],
-          "User-Agent": [
-            "test-user-agent"
-          ],
-          "X-Forwarded-For": [
-            "123.123.123.123"
-          ],
-          "Accept-Language": [
-            "en"
-          ],
-          "Dnt": [
-            "0"
-          ]
-        },
-        "uri": "https://ads.tremorhub.com/ad/rtb/prebid",
-        "body": {
-          "id": "some-request-id",
-          "ext": {
-            "extra": {
-              "custom": "1234"
-            }
-          },
-          "device": {
-            "ua": "test-user-agent",
-            "ip": "123.123.123.123",
-            "language": "en",
-            "dnt": 0
-          },
-          "imp": [
             {
               "id": "0_1",
               "video": {
@@ -261,7 +163,7 @@
           },
           "tmax": 1000
         },
-        "impIDs":["0_1"]
+        "impIDs": ["0_0", "0_1"]
       },
       "mockResponse": {
         "status": 200,
@@ -270,6 +172,23 @@
           "seatbid": [
             {
               "bid": [
+                {
+                  "id": "a3ae1b4e2fc24a4fb45540082e98e161",
+                  "impid": "0_0",
+                  "price": 3.5,
+                  "adm": "awesome-markup",
+                  "adomain": [
+                    "awesome.com"
+                  ],
+                  "crid": "20",
+                  "w": 1280,
+                  "h": 720,
+                  "ext": {
+                    "prebid": {
+                      "type": "video"
+                    }
+                  }
+                },
                 {
                   "id": "25c6976b14e041029afd5b00acabd933",
                   "impid": "0_1",
@@ -304,48 +223,48 @@
   ],
   "expectedBidResponses": [
     {
-      "bids": [{
-        "bid": {
-          "id": "a3ae1b4e2fc24a4fb45540082e98e161",
-          "impid": "0_0",
-          "price": 3.5,
-          "adm": "awesome-markup",
-          "adomain": [
-            "awesome.com"
-          ],
-          "crid": "20",
-          "w": 1280,
-          "h": 720,
-          "ext": {
-            "prebid": {
-              "type": "video"
+      "bids": [
+        {
+          "bid": {
+            "id": "a3ae1b4e2fc24a4fb45540082e98e161",
+            "impid": "0_0",
+            "price": 3.5,
+            "adm": "awesome-markup",
+            "adomain": [
+              "awesome.com"
+            ],
+            "crid": "20",
+            "w": 1280,
+            "h": 720,
+            "ext": {
+              "prebid": {
+                "type": "video"
+              }
             }
-          }
+          },
+          "type": "video"
         },
-        "type": "video"
-      }]
-    },
-    {
-      "bids": [{
-        "bid": {
-          "id": "25c6976b14e041029afd5b00acabd933",
-          "impid": "0_1",
-          "price": 3.5,
-          "adm": "awesome-markup",
-          "adomain": [
-            "awesome.com"
-          ],
-          "crid": "20",
-          "w": 1280,
-          "h": 720,
-          "ext": {
-            "prebid": {
-              "type": "video"
+        {
+          "bid": {
+            "id": "25c6976b14e041029afd5b00acabd933",
+            "impid": "0_1",
+            "price": 3.5,
+            "adm": "awesome-markup",
+            "adomain": [
+              "awesome.com"
+            ],
+            "crid": "20",
+            "w": 1280,
+            "h": 720,
+            "ext": {
+              "prebid": {
+                "type": "video"
+              }
             }
-          }
-        },
-        "type": "video"
-      }]
+          },
+          "type": "video"
+        }
+      ]
     }
   ]
 }

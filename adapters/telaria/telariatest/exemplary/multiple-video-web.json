@@ -176,7 +176,12 @@
                       "type": "video"
                     }
                   }
-                },
+                }
+              ],
+              "seat": "telaria"
+            },
+            {
+              "bid": [
                 {
                   "id": "25c6976b14e041029afd5b00acabd933",
                   "impid": "0_1",

@@ -304,14 +304,15 @@ func (a *TelariaAdapter) MakeBids(internalRequest *openrtb2.BidRequest, external
 	}
 
 	bidResponse := adapters.NewBidderResponseWithBidsCapacity(len(bidResp.SeatBid[0].Bid))
-	sb := bidResp.SeatBid[0]
-
-	for i := range sb.Bid {
-		bid := sb.Bid[i]
-		bidResponse.Bids = append(bidResponse.Bids, &adapters.TypedBid{
-			Bid:     &bid,
-			BidType: openrtb_ext.BidTypeVideo,
-		})
+	for j := range bidResp.SeatBid {
+		sb := bidResp.SeatBid[j]
+		for i := range sb.Bid {
+			bid := sb.Bid[i]
+			bidResponse.Bids = append(bidResponse.Bids, &adapters.TypedBid{
+				Bid:     &bid,
+				BidType: openrtb_ext.BidTypeVideo,
+			})
+		}
 	}
 	return bidResponse, nil
 }

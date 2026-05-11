@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path"
 	"strconv"
+	"strings"
 
 	"github.com/prebid/openrtb/v20/openrtb2"
 	"github.com/prebid/prebid-server/v3/adapters"
@@ -186,10 +187,10 @@ func (a *SmartAdserverAdapter) MakeBids(internalRequest *openrtb2.BidRequest, ex
 
 	for _, sb := range bidResp.SeatBid {
 		for i := 0; i < len(sb.Bid); i++ {
-			bid := sb.Bid[i]
+			bid := &sb.Bid[i]
 			bidResponse.Bids = append(bidResponse.Bids, &adapters.TypedBid{
-				Bid:     &bid,
-				BidType: getBidTypeFromMarkupType(bid.MType),
+				Bid:     bid,
+				BidType: getBidTypeFromMarkupType(bid),
 			})
 
 		}
@@ -222,16 +223,20 @@ func (a *SmartAdserverAdapter) BuildEndpointURL(isProgrammaticGuaranteed bool) (
 	return uri.String(), nil
 }
 
-func getBidTypeFromMarkupType(mtype openrtb2.MarkupType) openrtb_ext.BidType {
-	switch mtype {
-	case openrtb2.MarkupVideo:
+func getBidTypeFromMarkupType(bid *openrtb2.Bid) openrtb_ext.BidType {
+	mtype := bid.MType
+	switch {
+	case mtype == openrtb2.MarkupVideo:
 		return openrtb_ext.BidTypeVideo
-	case openrtb2.MarkupAudio:
+	case mtype == openrtb2.MarkupAudio:
 		return openrtb_ext.BidTypeAudio
-	case openrtb2.MarkupBanner:
+	case mtype == openrtb2.MarkupBanner:
 		return openrtb_ext.BidTypeBanner
-	case openrtb2.MarkupNative:
+	case mtype == openrtb2.MarkupNative:
 		return openrtb_ext.BidTypeNative
+	// sometimes, mtype is not set, so check if the markup contains a VAST tag to determine if it's a video bid
+	case strings.Contains(bid.AdM, "<VAST"):
+		return openrtb_ext.BidTypeVideo
 	default:
 		return openrtb_ext.BidTypeBanner
 	}

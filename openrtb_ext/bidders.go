@@ -243,6 +243,7 @@ var coreBidderNames []BidderName = []BidderName{
 	BidderStartIO,
 	BidderStroeerCore,
 	BidderTaboola,
+	BidderTAdvertisingBlis,
 	BidderTappx,
 	BidderTeads,
 	BidderTeal,
@@ -619,6 +620,7 @@ const (
 	BidderStartIO           BidderName = "startio"
 	BidderStroeerCore       BidderName = "stroeerCore"
 	BidderTaboola           BidderName = "taboola"
+	BidderTAdvertisingBlis  BidderName = "tadvertising_blis"
 	BidderTappx             BidderName = "tappx"
 	BidderTeads             BidderName = "teads"
 	BidderTeal              BidderName = "teal"

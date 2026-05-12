@@ -224,6 +224,7 @@ import (
 	"github.com/prebid/prebid-server/v4/adapters/startio"
 	"github.com/prebid/prebid-server/v4/adapters/stroeerCore"
 	"github.com/prebid/prebid-server/v4/adapters/taboola"
+	"github.com/prebid/prebid-server/v4/adapters/tadvertising_blis"
 	"github.com/prebid/prebid-server/v4/adapters/tappx"
 	"github.com/prebid/prebid-server/v4/adapters/teads"
 	"github.com/prebid/prebid-server/v4/adapters/telaria"
@@ -495,6 +496,7 @@ func newAdapterBuilders() map[openrtb_ext.BidderName]adapters.Builder {
 		openrtb_ext.BidderStartIO:           startio.Builder,
 		openrtb_ext.BidderStroeerCore:       stroeerCore.Builder,
 		openrtb_ext.BidderTaboola:           taboola.Builder,
+		openrtb_ext.BidderTAdvertisingBlis:  tadvertising_blis.Builder,
 		openrtb_ext.BidderTappx:             tappx.Builder,
 		openrtb_ext.BidderTeads:             teads.Builder,
 		openrtb_ext.BidderTeal:              teal.Builder,

@@ -5,7 +5,7 @@ def dockerImageName = "prebid-server"
 def gar_locations = ["us", "europe", "asia"]
 def gar_repo = "viralize-143916/monetize"
 def releaseConfig = [
-    "default_release": "minor"
+    "default_release": "patch"
 ]
 def buildImage(name, dcr) {
     sh """

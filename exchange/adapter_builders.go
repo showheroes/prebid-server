@@ -115,6 +115,7 @@ import (
 	"github.com/prebid/prebid-server/v4/adapters/fwssp"
 	"github.com/prebid/prebid-server/v4/adapters/gamma"
 	"github.com/prebid/prebid-server/v4/adapters/gamoshi"
+	"github.com/prebid/prebid-server/v4/adapters/genericvast"
 	"github.com/prebid/prebid-server/v4/adapters/globalsun"
 	"github.com/prebid/prebid-server/v4/adapters/goldbach"
 	"github.com/prebid/prebid-server/v4/adapters/grid"

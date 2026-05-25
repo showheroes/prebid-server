@@ -1,0 +1,31 @@
+{
+  "mockBidRequest": {
+    "id": "req-bad-xml",
+    "site": {"page": "https://publisher.example.com/"},
+    "imp": [
+      {
+        "id": "imp-bad",
+        "video": {"mimes": ["video/mp4"]},
+        "ext": {"bidder": {"url": "https://vast.example.com/bad-xml"}}
+      }
+    ]
+  },
+  "httpCalls": [
+    {
+      "expectedRequest": {
+        "uri": "https://vast.example.com/bad-xml",
+        "impIDs": ["imp-bad"]
+      },
+      "mockResponse": {
+        "status": 200,
+        "body": "<VAST version=\"4.0\"><Ad><InLine><AdSystem>oops"
+      }
+    }
+  ],
+  "expectedMakeBidsErrors": [
+    {
+      "value": "failed to parse VAST response",
+      "comparison": "regex"
+    }
+  ]
+}

@@ -132,6 +132,7 @@ var coreBidderNames []BidderName = []BidderName{
 	BidderFRVRAdNetwork,
 	BidderGamma,
 	BidderGamoshi,
+	BidderGenericVast,
 	BidderGlobalsun,
 	BidderGoldbach,
 	BidderGothamads,
@@ -509,6 +510,7 @@ const (
 	BidderFRVRAdNetwork     BidderName = "frvradn"
 	BidderGamma             BidderName = "gamma"
 	BidderGamoshi           BidderName = "gamoshi"
+	BidderGenericVast       BidderName = "genericvast"
 	BidderGlobalsun         BidderName = "globalsun"
 	BidderGoldbach          BidderName = "goldbach"
 	BidderGothamads         BidderName = "gothamads"

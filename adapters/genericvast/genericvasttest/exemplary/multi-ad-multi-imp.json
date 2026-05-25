@@ -1,0 +1,82 @@
+{
+  "mockBidRequest": {
+    "id": "req-multi",
+    "site": {
+      "page": "https://publisher.example.com/page"
+    },
+    "imp": [
+      {
+        "id": "imp-1",
+        "video": {"mimes": ["video/mp4"]},
+        "ext": {"bidder": {"url": "https://vast.example.com/tag?n=3"}}
+      },
+      {
+        "id": "imp-2",
+        "video": {"mimes": ["video/mp4"]},
+        "ext": {"bidder": {"url": "https://ignored.example.com/should-not-be-used"}}
+      }
+    ]
+  },
+  "httpCalls": [
+    {
+      "expectedRequest": {
+        "uri": "https://vast.example.com/tag?n=3",
+        "headers": {
+          "Accept": ["application/xml, text/xml, */*"],
+          "Referer": ["https://publisher.example.com/page"],
+          "X-Device-Referer": ["https://publisher.example.com/page"]
+        },
+        "impIDs": ["imp-1", "imp-2"]
+      },
+      "mockResponse": {
+        "status": 200,
+        "body": "<VAST version=\"3.0\"><Ad id=\"ad-A\"><InLine><AdSystem>AdsysOne</AdSystem><Advertiser>brand-a.example.com</Advertiser><Pricing currency=\"EUR\">1.10</Pricing><Creatives><Creative id=\"c-A\"><Linear><Duration>00:00:15</Duration></Linear></Creative></Creatives></InLine></Ad><Ad id=\"ad-B\"><InLine><AdSystem>AdsysOne</AdSystem><Advertiser>brand-b.example.com</Advertiser><Pricing currency=\"EUR\">2.20</Pricing><Creatives><Creative id=\"c-B\"><Linear><Duration>00:00:20</Duration></Linear></Creative></Creatives></InLine></Ad><Ad id=\"ad-C\"><InLine><AdSystem>AdsysOne</AdSystem><Pricing currency=\"EUR\">3.30</Pricing><Creatives><Creative id=\"c-C\"><Linear><Duration>00:00:25</Duration></Linear></Creative></Creatives></InLine></Ad></VAST>"
+      }
+    }
+  ],
+  "expectedBidResponses": [
+    {
+      "currency": "EUR",
+      "bids": [
+        {
+          "bid": {
+            "id": "ad-A",
+            "impid": "imp-1",
+            "price": 1.1,
+            "adm": "<VAST version=\"3.0\"><Ad id=\"ad-A\"><InLine><AdSystem>AdsysOne</AdSystem><Advertiser>brand-a.example.com</Advertiser><Pricing currency=\"EUR\">1.10</Pricing><Creatives><Creative id=\"c-A\"><Linear><Duration>00:00:15</Duration></Linear></Creative></Creatives></InLine></Ad></VAST>",
+            "crid": "c-A",
+            "dur": 15,
+            "adomain": ["brand-a.example.com"],
+            "mtype": 2
+          },
+          "type": "video"
+        },
+        {
+          "bid": {
+            "id": "ad-B",
+            "impid": "imp-2",
+            "price": 2.2,
+            "adm": "<VAST version=\"3.0\"><Ad id=\"ad-B\"><InLine><AdSystem>AdsysOne</AdSystem><Advertiser>brand-b.example.com</Advertiser><Pricing currency=\"EUR\">2.20</Pricing><Creatives><Creative id=\"c-B\"><Linear><Duration>00:00:20</Duration></Linear></Creative></Creatives></InLine></Ad></VAST>",
+            "crid": "c-B",
+            "dur": 20,
+            "adomain": ["brand-b.example.com"],
+            "mtype": 2
+          },
+          "type": "video"
+        },
+        {
+          "bid": {
+            "id": "ad-C",
+            "impid": "imp-1",
+            "price": 3.3,
+            "adm": "<VAST version=\"3.0\"><Ad id=\"ad-C\"><InLine><AdSystem>AdsysOne</AdSystem><Pricing currency=\"EUR\">3.30</Pricing><Creatives><Creative id=\"c-C\"><Linear><Duration>00:00:25</Duration></Linear></Creative></Creatives></InLine></Ad></VAST>",
+            "crid": "c-C",
+            "dur": 25,
+            "mtype": 2
+          },
+          "type": "video"
+        }
+      ]
+    }
+  ]
+}

@@ -115,6 +115,7 @@ import (
 	"github.com/prebid/prebid-server/v3/adapters/fwssp"
 	"github.com/prebid/prebid-server/v3/adapters/gamma"
 	"github.com/prebid/prebid-server/v3/adapters/gamoshi"
+	"github.com/prebid/prebid-server/v3/adapters/genericvast"
 	"github.com/prebid/prebid-server/v3/adapters/globalsun"
 	"github.com/prebid/prebid-server/v3/adapters/goldbach"
 	"github.com/prebid/prebid-server/v3/adapters/gothamads"
@@ -386,6 +387,7 @@ func newAdapterBuilders() map[openrtb_ext.BidderName]adapters.Builder {
 		openrtb_ext.BidderFRVRAdNetwork:     frvradn.Builder,
 		openrtb_ext.BidderGamma:             gamma.Builder,
 		openrtb_ext.BidderGamoshi:           gamoshi.Builder,
+		openrtb_ext.BidderGenericVast:       genericvast.Builder,
 		openrtb_ext.BidderGlobalsun:         globalsun.Builder,
 		openrtb_ext.BidderGoldbach:          goldbach.Builder,
 		openrtb_ext.BidderGothamads:         gothamads.Builder,

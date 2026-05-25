@@ -1,0 +1,26 @@
+{
+  "mockBidRequest": {
+    "id": "req-empty-vast",
+    "site": {"page": "https://publisher.example.com/"},
+    "imp": [
+      {
+        "id": "imp-ev",
+        "video": {"mimes": ["video/mp4"]},
+        "ext": {"bidder": {"url": "https://vast.example.com/no-ads"}}
+      }
+    ]
+  },
+  "httpCalls": [
+    {
+      "expectedRequest": {
+        "uri": "https://vast.example.com/no-ads",
+        "impIDs": ["imp-ev"]
+      },
+      "mockResponse": {
+        "status": 200,
+        "body": "<VAST version=\"4.0\"><Error><![CDATA[https://errors.example.com/nofill]]></Error></VAST>"
+      }
+    }
+  ],
+  "expectedBidResponses": []
+}

@@ -1,0 +1,12 @@
+endpoint: "https://example.com/genericvast"
+maintainer:
+  email: tech@showheroes.com
+openrtb:
+  version: 2.6
+capabilities:
+  app:
+    mediaTypes:
+      - video
+  site:
+    mediaTypes:
+      - video

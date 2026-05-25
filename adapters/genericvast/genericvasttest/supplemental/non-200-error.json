@@ -1,0 +1,31 @@
+{
+  "mockBidRequest": {
+    "id": "req-500",
+    "site": {"page": "https://publisher.example.com/"},
+    "imp": [
+      {
+        "id": "imp-500",
+        "video": {"mimes": ["video/mp4"]},
+        "ext": {"bidder": {"url": "https://vast.example.com/error"}}
+      }
+    ]
+  },
+  "httpCalls": [
+    {
+      "expectedRequest": {
+        "uri": "https://vast.example.com/error",
+        "impIDs": ["imp-500"]
+      },
+      "mockResponse": {
+        "status": 500,
+        "body": ""
+      }
+    }
+  ],
+  "expectedMakeBidsErrors": [
+    {
+      "value": "unexpected status code: 500",
+      "comparison": "literal"
+    }
+  ]
+}

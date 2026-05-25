@@ -1,0 +1,44 @@
+{
+  "mockBidRequest": {
+    "id": "req-wrapper",
+    "site": {"page": "https://publisher.example.com/"},
+    "imp": [
+      {
+        "id": "imp-w",
+        "video": {"mimes": ["video/mp4"]},
+        "ext": {"bidder": {"url": "https://vast.example.com/wrapper"}}
+      }
+    ]
+  },
+  "httpCalls": [
+    {
+      "expectedRequest": {
+        "uri": "https://vast.example.com/wrapper",
+        "impIDs": ["imp-w"]
+      },
+      "mockResponse": {
+        "status": 200,
+        "body": "<VAST version=\"4.2\"><Ad id=\"wrap-1\"><Wrapper><AdSystem>WrapSSP</AdSystem><Advertiser>brand-wrap.example.com</Advertiser><VASTAdTagURI><![CDATA[https://downstream.example.com/vast.xml]]></VASTAdTagURI><Pricing currency=\"EUR\">0.75</Pricing><Creatives><Creative id=\"wc-1\"/></Creatives></Wrapper></Ad></VAST>"
+      }
+    }
+  ],
+  "expectedBidResponses": [
+    {
+      "currency": "EUR",
+      "bids": [
+        {
+          "bid": {
+            "id": "wrap-1",
+            "impid": "imp-w",
+            "price": 0.75,
+            "adm": "<VAST version=\"4.2\"><Ad id=\"wrap-1\"><Wrapper><AdSystem>WrapSSP</AdSystem><Advertiser>brand-wrap.example.com</Advertiser><VASTAdTagURI><![CDATA[https://downstream.example.com/vast.xml]]></VASTAdTagURI><Pricing currency=\"EUR\">0.75</Pricing><Creatives><Creative id=\"wc-1\"/></Creatives></Wrapper></Ad></VAST>",
+            "crid": "wc-1",
+            "adomain": ["brand-wrap.example.com"],
+            "mtype": 2
+          },
+          "type": "video"
+        }
+      ]
+    }
+  ]
+}

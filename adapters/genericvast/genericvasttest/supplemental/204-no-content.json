@@ -1,0 +1,26 @@
+{
+  "mockBidRequest": {
+    "id": "req-204",
+    "site": {"page": "https://publisher.example.com/"},
+    "imp": [
+      {
+        "id": "imp-204",
+        "video": {"mimes": ["video/mp4"]},
+        "ext": {"bidder": {"url": "https://vast.example.com/empty"}}
+      }
+    ]
+  },
+  "httpCalls": [
+    {
+      "expectedRequest": {
+        "uri": "https://vast.example.com/empty",
+        "impIDs": ["imp-204"]
+      },
+      "mockResponse": {
+        "status": 204,
+        "body": ""
+      }
+    }
+  ],
+  "expectedBidResponses": []
+}

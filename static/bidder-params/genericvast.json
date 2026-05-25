@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "Generic VAST Adapter Params",
+  "description": "A schema which validates params accepted by the Generic VAST adapter",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "The full URL the adapter will call (verbatim) to fetch a VAST response.",
+      "format": "uri",
+      "minLength": 1
+    },
+    "cpm": {
+      "type": "number",
+      "description": "Optional fallback CPM (EUR) used only when the VAST response does not declare a <Pricing> element.",
+      "minimum": 0
+    }
+  },
+  "required": ["url"]
+}

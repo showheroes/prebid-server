@@ -1,0 +1,63 @@
+{
+  "mockBidRequest": {
+    "id": "req-app",
+    "app": {
+      "id": "app-1",
+      "bundle": "com.example.app",
+      "name": "Example App"
+    },
+    "device": {
+      "ua": "ExampleApp/1.0 (iPhone)",
+      "ip": "198.51.100.7",
+      "language": "fr"
+    },
+    "imp": [
+      {
+        "id": "imp-app",
+        "video": {"mimes": ["video/mp4"]},
+        "ext": {"bidder": {"url": "https://vast.example.com/app"}}
+      }
+    ]
+  },
+  "httpCalls": [
+    {
+      "expectedRequest": {
+        "uri": "https://vast.example.com/app",
+        "headers": {
+          "Accept": ["application/xml, text/xml, */*"],
+          "User-Agent": ["ExampleApp/1.0 (iPhone)"],
+          "X-Forwarded-For": ["198.51.100.7"],
+          "X-Device-Ip": ["198.51.100.7"],
+          "X-Real-Ip": ["198.51.100.7"],
+          "Accept-Language": ["fr"],
+          "X-Device-Language": ["fr"]
+        },
+        "impIDs": ["imp-app"]
+      },
+      "mockResponse": {
+        "status": 200,
+        "body": "<VAST version=\"4.0\"><Ad id=\"app-ad\"><InLine><AdSystem>AppSSP</AdSystem><Advertiser>brand-app.example.com</Advertiser><Pricing currency=\"EUR\">0.5</Pricing><Creatives><Creative id=\"c-app\"><Linear><Duration>00:00:06.500</Duration></Linear></Creative></Creatives></InLine></Ad></VAST>"
+      }
+    }
+  ],
+  "expectedBidResponses": [
+    {
+      "currency": "EUR",
+      "bids": [
+        {
+          "bid": {
+            "id": "app-ad",
+            "impid": "imp-app",
+            "price": 0.5,
+            "adm": "<VAST version=\"4.0\"><Ad id=\"app-ad\"><InLine><AdSystem>AppSSP</AdSystem><Advertiser>brand-app.example.com</Advertiser><Pricing currency=\"EUR\">0.5</Pricing><Creatives><Creative id=\"c-app\"><Linear><Duration>00:00:06.500</Duration></Linear></Creative></Creatives></InLine></Ad></VAST>",
+            "crid": "c-app",
+            "dur": 7,
+            "adomain": ["brand-app.example.com"],
+            "mtype": 2
+          },
+          "type": "video"
+        }
+      ]
+    }
+  ]
+}

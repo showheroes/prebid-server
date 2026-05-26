@@ -12,9 +12,7 @@ import (
 )
 
 func TestJsonSamples(t *testing.T) {
-	bidder, err := Builder(openrtb_ext.BidderGenericVast, config.Adapter{
-		Endpoint: "https://example.com/genericvast",
-	}, config.Server{})
+	bidder, err := Builder(openrtb_ext.BidderGenericVast, config.Adapter{}, config.Server{})
 	if err != nil {
 		t.Fatalf("Builder returned unexpected error %v", err)
 	}

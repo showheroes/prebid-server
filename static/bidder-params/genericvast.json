@@ -12,7 +12,7 @@
     },
     "cpm": {
       "type": "number",
-      "description": "Fallback CPM (EUR) used only when the VAST response does not declare a <Pricing> element.",
+      "description": "Fallback CPM (EUR) used only when the VAST response does not declare a CPM <Pricing> element.",
       "minimum": 0
     }
   },

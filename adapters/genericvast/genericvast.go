@@ -13,7 +13,6 @@ import (
 )
 
 type adapter struct {
-	endpoint string
 }
 
 // impExt is the relevant subset of imp.ext for this adapter: only the
@@ -27,7 +26,7 @@ const defaultCurrency = "EUR"
 
 // Builder builds a new instance of the Generic VAST adapter for the given bidder with the given config.
 func Builder(bidderName openrtb_ext.BidderName, cfg config.Adapter, server config.Server) (adapters.Bidder, error) {
-	return &adapter{endpoint: cfg.Endpoint}, nil
+	return &adapter{}, nil
 }
 
 // MakeRequests issues exactly one GET to the URL declared on imp[0].ext.bidder, regardless of
@@ -119,19 +118,11 @@ func (a *adapter) MakeBids(request *openrtb2.BidRequest, _ *adapters.RequestData
 		return nil, nil
 	}
 
-	var cpmFallback *float64
+	var perAdFallback float64
 	var ext impExt
 	if err := jsonutil.Unmarshal(request.Imp[0].Ext, &ext); err == nil {
-		cpmFallback = ext.Bidder.CPM
+		perAdFallback = ext.Bidder.CPM / float64(len(doc.Ads))
 	}
-	// The fallback CPM represents the total CPM for the whole VAST response, so
-	// when multiple <Ad> elements are returned we divide it evenly across them.
-	var perAdFallback *float64
-	if cpmFallback != nil && len(doc.Ads) > 0 {
-		v := *cpmFallback / float64(len(doc.Ads))
-		perAdFallback = &v
-	}
-
 	resp := &adapters.BidderResponse{Currency: defaultCurrency, Bids: make([]*adapters.TypedBid, 0, len(doc.Ads))}
 	currencySet := false
 
@@ -140,8 +131,8 @@ func (a *adapter) MakeBids(request *openrtb2.BidRequest, _ *adapters.RequestData
 		impID := request.Imp[i%len(request.Imp)].ID
 
 		price, currency, ok := extractPrice(ad)
-		if !ok && perAdFallback != nil {
-			price = *perAdFallback
+		if !ok {
+			price = perAdFallback
 			currency = defaultCurrency
 		}
 		if !currencySet && currency != "" {

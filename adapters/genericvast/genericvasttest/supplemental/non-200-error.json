@@ -6,7 +6,7 @@
       {
         "id": "imp-500",
         "video": {"mimes": ["video/mp4"]},
-        "ext": {"bidder": {"url": "https://vast.example.com/error"}}
+        "ext": {"bidder": {"url": "https://vast.example.com/error", "cpm": 1.0}}
       }
     ]
   },

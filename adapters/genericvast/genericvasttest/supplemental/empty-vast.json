@@ -6,7 +6,7 @@
       {
         "id": "imp-ev",
         "video": {"mimes": ["video/mp4"]},
-        "ext": {"bidder": {"url": "https://vast.example.com/no-ads"}}
+        "ext": {"bidder": {"url": "https://vast.example.com/no-ads", "cpm": 1.0}}
       }
     ]
   },

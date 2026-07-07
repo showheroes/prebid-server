@@ -3,6 +3,8 @@ package genericvast
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/prebid/openrtb/v20/openrtb2"
 	"github.com/prebid/prebid-server/v3/adapters"
@@ -41,14 +43,42 @@ func (a *adapter) MakeRequests(request *openrtb2.BidRequest, _ *adapters.ExtraRe
 	if err != nil {
 		return nil, []error{err}
 	}
+
+	uri, err := encodeURL(ext.Bidder.URL)
+	if err != nil {
+		return nil, []error{err}
+	}
 	return []*adapters.RequestData{
 		{
 			Method:  http.MethodGet,
-			Uri:     ext.Bidder.URL,
+			Uri:     uri,
 			Headers: buildHeaders(request),
 			ImpIDs:  openrtb_ext.GetImpIDs(request.Imp),
 		},
 	}, nil
+}
+
+// encodeURL parses the raw URL and re-encodes its query params
+func encodeURL(raw string) (string, error) {
+	endpoint, queryParamsRaw, ok := strings.Cut(raw, "?")
+	if !ok {
+		return raw, nil
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return "", &errortypes.BadInput{Message: fmt.Sprintf("invalid url %q: %v", raw, err)}
+	}
+
+	query := url.Values{}
+	for _, queryParam := range strings.Split(queryParamsRaw, "&") {
+		if k, v, _ := strings.Cut(queryParam, "="); k != "" {
+			query.Add(k, v)
+		}
+	}
+
+	u.RawQuery = query.Encode()
+
+	return u.String(), nil
 }
 
 func buildHeaders(request *openrtb2.BidRequest) http.Header {

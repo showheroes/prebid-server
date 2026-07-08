@@ -71,9 +71,14 @@ func encodeURL(raw string) (string, error) {
 
 	query := url.Values{}
 	for _, queryParam := range strings.Split(queryParamsRaw, "&") {
-		if k, v, _ := strings.Cut(queryParam, "="); k != "" {
-			query.Add(k, v)
+		k, v, _ := strings.Cut(queryParam, "=")
+		if k == "" {
+			continue
 		}
+		if decoded, err := url.QueryUnescape(v); err == nil {
+			v = decoded
+		}
+		query.Add(k, v)
 	}
 
 	u.RawQuery = query.Encode()

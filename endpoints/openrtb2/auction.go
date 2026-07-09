@@ -422,6 +422,9 @@ func (deps *endpointDeps) parseRequest(httpRequest *http.Request, labels *metric
 	var errL []error
 	var r io.ReadCloser = httpRequest.Body
 	reqContentEncoding := httputil.ContentEncoding(httpRequest.Header.Get("Content-Encoding"))
+	if reqContentEncoding == "" && httpRequest.URL.Query().Get("gzip") == "1" {
+		reqContentEncoding = httputil.ContentEncodingGZIP
+	}
 	if reqContentEncoding != "" {
 		if !deps.cfg.Compression.Request.IsSupported(reqContentEncoding) {
 			errs = []error{fmt.Errorf("Content-Encoding of type %s is not supported", reqContentEncoding)}
@@ -445,6 +448,7 @@ func (deps *endpointDeps) parseRequest(httpRequest *http.Request, labels *metric
 		errs = []error{err}
 		return
 	}
+
 	labels.RequestSize = len(requestJson)
 
 	if limitedReqReader.N <= 0 {
@@ -465,6 +469,7 @@ func (deps *endpointDeps) parseRequest(httpRequest *http.Request, labels *metric
 	requestJson, rejectErr := hookExecutor.ExecuteEntrypointStage(httpRequest, requestJson)
 	if rejectErr != nil {
 		errs = []error{rejectErr}
+		logger.Infof("Full payload received is %s from %s", string(requestJson), httpRequest.RemoteAddr)
 		if err = jsonutil.UnmarshalValid(requestJson, req.BidRequest); err != nil {
 			logger.Errorf("Failed to unmarshal BidRequest during entrypoint rejection: %s", err)
 		}

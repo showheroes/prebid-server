@@ -1,0 +1,80 @@
+{
+  "mockBidRequest": {
+    "id": "test-request-id",
+    "imp": [
+      {
+        "id": "test-imp-banner",
+        "banner": {
+          "format": [
+            {
+              "w": 300,
+              "h": 250
+            }
+          ]
+        },
+        "ext": {
+          "bidder": {
+            "account": "test-account"
+          }
+        }
+      }
+    ],
+    "site": {
+      "domain": "example.com",
+      "page": "https://example.com/demo"
+    }
+  },
+  "httpCalls": [
+    {
+      "expectedRequest": {
+        "uri": "https://a.bids.ws/openrtb2/auction",
+        "body": {
+          "id": "test-request-id",
+          "imp": [
+            {
+              "id": "test-imp-banner",
+              "banner": {
+                "format": [
+                  {
+                    "w": 300,
+                    "h": 250
+                  }
+                ]
+              },
+              "ext": {
+                "bidder": {
+                  "account": "test-account"
+                }
+              }
+            }
+          ],
+          "site": {
+            "domain": "example.com",
+            "page": "https://example.com/demo",
+            "publisher": {
+              "id": "test-account"
+            }
+          },
+          "ext": {
+            "bids": {
+              "pbs": 1
+            }
+          }
+        },
+        "impIDs": [
+          "test-imp-banner"
+        ]
+      },
+      "mockResponse": {
+        "status": 500,
+        "body": {}
+      }
+    }
+  ],
+  "expectedMakeBidsErrors": [
+    {
+      "value": "Unexpected status code: 500. Run with request.debug = 1 for more info",
+      "comparison": "literal"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "mockBidRequest": {
+    "id": "test-request-id",
+    "imp": [
+      {
+        "id": "test-imp-banner",
+        "banner": {
+          "format": [
+            {
+              "w": 300,
+              "h": 250
+            }
+          ]
+        },
+        "ext": {
+          "bidder": [
+            "not-an-object"
+          ]
+        }
+      }
+    ]
+  },
+  "expectedMakeRequestsErrors": [
+    {
+      "value": "Error parsing imp.ext for impression test-imp-banner",
+      "comparison": "literal"
+    }
+  ]
+}

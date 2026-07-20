@@ -1,0 +1,117 @@
+{
+  "mockBidRequest": {
+    "id": "test-request-id",
+    "imp": [
+      {
+        "id": "test-imp-video",
+        "video": {
+          "mimes": [
+            "video/mp4"
+          ],
+          "w": 640,
+          "h": 480
+        },
+        "ext": {
+          "bidder": {
+            "account": "test-account",
+            "placement": "test-placement-video"
+          }
+        }
+      }
+    ],
+    "app": {
+      "bundle": "com.example.app",
+      "publisher": {
+        "domain": "example.com"
+      }
+    }
+  },
+  "httpCalls": [
+    {
+      "expectedRequest": {
+        "uri": "https://a.bids.ws/openrtb2/auction",
+        "body": {
+          "id": "test-request-id",
+          "imp": [
+            {
+              "id": "test-imp-video",
+              "video": {
+                "mimes": [
+                  "video/mp4"
+                ],
+                "w": 640,
+                "h": 480
+              },
+              "ext": {
+                "bidder": {
+                  "account": "test-account",
+                  "placement": "test-placement-video"
+                },
+                "prebid": {
+                  "storedrequest": {
+                    "id": "test-placement-video"
+                  }
+                }
+              }
+            }
+          ],
+          "app": {
+            "bundle": "com.example.app",
+            "publisher": {
+              "id": "test-account",
+              "domain": "example.com"
+            }
+          },
+          "ext": {
+            "bids": {
+              "pbs": 1
+            }
+          }
+        },
+        "impIDs": [
+          "test-imp-video"
+        ]
+      },
+      "mockResponse": {
+        "status": 200,
+        "body": {
+          "id": "test-request-id",
+          "cur": "USD",
+          "seatbid": [
+            {
+              "seat": "teal",
+              "bid": [
+                {
+                  "id": "teal-bid-1",
+                  "impid": "test-imp-video",
+                  "price": 2.0,
+                  "adm": "<VAST></VAST>",
+                  "crid": "creative-1",
+                  "mtype": 2
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expectedBidResponses": [
+    {
+      "currency": "USD",
+      "bids": [
+        {
+          "bid": {
+            "id": "teal-bid-1",
+            "impid": "test-imp-video",
+            "price": 2.0,
+            "adm": "<VAST></VAST>",
+            "crid": "creative-1",
+            "mtype": 2
+          },
+          "type": "video"
+        }
+      ]
+    }
+  ]
+}

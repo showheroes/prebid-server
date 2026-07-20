@@ -1,0 +1,102 @@
+{
+  "mockBidRequest": {
+    "id": "test-request-id",
+    "imp": [
+      {
+        "id": "test-imp-native",
+        "native": {
+          "request": "{\"ver\":\"1.2\"}",
+          "ver": "1.2"
+        },
+        "ext": {
+          "bidder": {
+            "account": "test-account"
+          }
+        }
+      }
+    ],
+    "site": {
+      "domain": "example.com",
+      "page": "https://example.com/demo"
+    }
+  },
+  "httpCalls": [
+    {
+      "expectedRequest": {
+        "uri": "https://a.bids.ws/openrtb2/auction",
+        "body": {
+          "id": "test-request-id",
+          "imp": [
+            {
+              "id": "test-imp-native",
+              "native": {
+                "request": "{\"ver\":\"1.2\"}",
+                "ver": "1.2"
+              },
+              "ext": {
+                "bidder": {
+                  "account": "test-account"
+                }
+              }
+            }
+          ],
+          "site": {
+            "domain": "example.com",
+            "page": "https://example.com/demo",
+            "publisher": {
+              "id": "test-account"
+            }
+          },
+          "ext": {
+            "bids": {
+              "pbs": 1
+            }
+          }
+        },
+        "impIDs": [
+          "test-imp-native"
+        ]
+      },
+      "mockResponse": {
+        "status": 200,
+        "body": {
+          "id": "test-request-id",
+          "cur": "USD",
+          "seatbid": [
+            {
+              "seat": "teal",
+              "bid": [
+                {
+                  "id": "teal-bid-1",
+                  "impid": "test-imp-native",
+                  "price": 3.0,
+                  "adm": "{\"native\":{}}",
+                  "crid": "creative-1",
+                  "mtype": 4
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expectedBidResponses": [
+    {
+      "currency": "USD",
+      "bids": [
+        {
+          "bid": {
+            "id": "teal-bid-1",
+            "impid": "test-imp-native",
+            "price": 3.0,
+            "adm": "{\"native\":{}}",
+            "crid": "creative-1",
+            "mtype": 4
+          },
+          "type": "native"
+        }
+      ]
+    }
+  ]
+}

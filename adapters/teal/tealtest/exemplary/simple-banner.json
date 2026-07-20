@@ -1,0 +1,125 @@
+{
+  "mockBidRequest": {
+    "id": "test-request-id",
+    "imp": [
+      {
+        "id": "test-imp-banner",
+        "banner": {
+          "format": [
+            {
+              "w": 300,
+              "h": 250
+            }
+          ]
+        },
+        "ext": {
+          "bidder": {
+            "account": "test-account",
+            "placement": "test-placement300x250"
+          }
+        }
+      }
+    ],
+    "site": {
+      "domain": "example.com",
+      "page": "https://example.com/demo",
+      "publisher": {
+        "domain": "example.com"
+      }
+    }
+  },
+  "httpCalls": [
+    {
+      "expectedRequest": {
+        "uri": "https://a.bids.ws/openrtb2/auction",
+        "body": {
+          "id": "test-request-id",
+          "imp": [
+            {
+              "id": "test-imp-banner",
+              "banner": {
+                "format": [
+                  {
+                    "w": 300,
+                    "h": 250
+                  }
+                ]
+              },
+              "ext": {
+                "bidder": {
+                  "account": "test-account",
+                  "placement": "test-placement300x250"
+                },
+                "prebid": {
+                  "storedrequest": {
+                    "id": "test-placement300x250"
+                  }
+                }
+              }
+            }
+          ],
+          "site": {
+            "domain": "example.com",
+            "page": "https://example.com/demo",
+            "publisher": {
+              "id": "test-account",
+              "domain": "example.com"
+            }
+          },
+          "ext": {
+            "bids": {
+              "pbs": 1
+            }
+          }
+        },
+        "impIDs": [
+          "test-imp-banner"
+        ]
+      },
+      "mockResponse": {
+        "status": 200,
+        "body": {
+          "id": "test-request-id",
+          "cur": "USD",
+          "seatbid": [
+            {
+              "seat": "teal",
+              "bid": [
+                {
+                  "id": "teal-bid-1",
+                  "impid": "test-imp-banner",
+                  "price": 1.0,
+                  "adm": "<div>banner</div>",
+                  "crid": "creative-1",
+                  "w": 300,
+                  "h": 250,
+                  "mtype": 1
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expectedBidResponses": [
+    {
+      "currency": "USD",
+      "bids": [
+        {
+          "bid": {
+            "id": "teal-bid-1",
+            "impid": "test-imp-banner",
+            "price": 1.0,
+            "adm": "<div>banner</div>",
+            "crid": "creative-1",
+            "w": 300,
+            "h": 250,
+            "mtype": 1
+          },
+          "type": "banner"
+        }
+      ]
+    }
+  ]
+}

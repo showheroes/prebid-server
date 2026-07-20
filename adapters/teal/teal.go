@@ -83,29 +83,29 @@ func (a *adapter) MakeRequests(request *openrtb2.BidRequest, reqInfo *adapters.E
 	}}, errors
 }
 
-func parseImpExt(imp openrtb2.Imp) (openrtb_ext.ImpTeal, error) {
+func parseImpExt(imp openrtb2.Imp) (openrtb_ext.ExtImpTeal, error) {
 	var bidderExt adapters.ExtImpBidder
 	if err := jsonutil.Unmarshal(imp.Ext, &bidderExt); err != nil {
-		return openrtb_ext.ImpTeal{}, &errortypes.BadInput{
+		return openrtb_ext.ExtImpTeal{}, &errortypes.BadInput{
 			Message: "Error parsing imp.ext for impression " + imp.ID,
 		}
 	}
 
-	var tealExt openrtb_ext.ImpTeal
+	var tealExt openrtb_ext.ExtImpTeal
 	if err := jsonutil.Unmarshal(bidderExt.Bidder, &tealExt); err != nil {
-		return openrtb_ext.ImpTeal{}, &errortypes.BadInput{
+		return openrtb_ext.ExtImpTeal{}, &errortypes.BadInput{
 			Message: "Error parsing imp.ext for impression " + imp.ID,
 		}
 	}
 
 	if err := validateImpExt(tealExt); err != nil {
-		return openrtb_ext.ImpTeal{}, err
+		return openrtb_ext.ExtImpTeal{}, err
 	}
 
 	return tealExt, nil
 }
 
-func validateImpExt(ext openrtb_ext.ImpTeal) error {
+func validateImpExt(ext openrtb_ext.ExtImpTeal) error {
 	if strings.TrimSpace(ext.Account) == "" {
 		return &errortypes.BadInput{Message: "account parameter failed validation"}
 	}

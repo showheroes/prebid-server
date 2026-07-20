@@ -1,6 +1,6 @@
 {
   "mockBidRequest": {
-    "id": "test-request-id",
+    "id": "test-request-banner",
     "imp": [
       {
         "id": "test-imp-banner",
@@ -21,19 +21,34 @@
       }
     ],
     "site": {
+      "id": "demo-site",
       "domain": "example.com",
       "page": "https://example.com/demo",
       "publisher": {
-        "domain": "example.com"
+        "id": "demo-publisher"
+      }
+    },
+    "device": {
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "ip": "192.0.2.1",
+      "language": "en",
+      "dnt": 0
+    },
+    "user": {
+      "id": "demo-user"
+    },
+    "regs": {
+      "ext": {
+        "gdpr": 0
       }
     }
   },
   "httpCalls": [
     {
       "expectedRequest": {
-        "uri": "https://a.bids.ws/openrtb2/auction",
+        "uri": "https://test.example.com/bid",
         "body": {
-          "id": "test-request-id",
+          "id": "test-request-banner",
           "imp": [
             {
               "id": "test-imp-banner",
@@ -59,11 +74,25 @@
             }
           ],
           "site": {
+            "id": "demo-site",
             "domain": "example.com",
             "page": "https://example.com/demo",
             "publisher": {
-              "id": "test-account",
-              "domain": "example.com"
+              "id": "test-account"
+            }
+          },
+          "device": {
+            "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "ip": "192.0.2.1",
+            "language": "en",
+            "dnt": 0
+          },
+          "user": {
+            "id": "demo-user"
+          },
+          "regs": {
+            "ext": {
+              "gdpr": 0
             }
           },
           "ext": {
@@ -72,28 +101,35 @@
             }
           }
         },
-        "impIDs": [
-          "test-imp-banner"
-        ]
+        "impIDs": ["test-imp-banner"]
       },
       "mockResponse": {
         "status": 200,
         "body": {
-          "id": "test-request-id",
+          "id": "test-request-banner",
           "cur": "USD",
           "seatbid": [
             {
-              "seat": "teal",
               "bid": [
                 {
-                  "id": "teal-bid-1",
+                  "id": "test-imp-banner",
                   "impid": "test-imp-banner",
-                  "price": 1.0,
-                  "adm": "<div>banner</div>",
-                  "crid": "creative-1",
+                  "price": 2.50,
+                  "adm": "<div style=\"width:300px;height:250px;background:#f0f0f0;text-align:center;line-height:250px;\">Teal Demo Ad</div>",
                   "w": 300,
                   "h": 250,
-                  "mtype": 1
+                  "crid": "demo-creative-123",
+                  "exp": 300,
+                  "ext": {
+                    "origbidcpm": 2.50,
+                    "origbidcur": "USD",
+                    "prebid": {
+                      "type": "banner",
+                      "meta": {
+                        "adaptercode": "teal"
+                      }
+                    }
+                  }
                 }
               ]
             }
@@ -108,14 +144,24 @@
       "bids": [
         {
           "bid": {
-            "id": "teal-bid-1",
+            "id": "test-imp-banner",
             "impid": "test-imp-banner",
-            "price": 1.0,
-            "adm": "<div>banner</div>",
-            "crid": "creative-1",
+            "price": 2.50,
+            "adm": "<div style=\"width:300px;height:250px;background:#f0f0f0;text-align:center;line-height:250px;\">Teal Demo Ad</div>",
             "w": 300,
             "h": 250,
-            "mtype": 1
+            "crid": "demo-creative-123",
+            "exp": 300,
+            "ext": {
+              "origbidcpm": 2.50,
+              "origbidcur": "USD",
+              "prebid": {
+                "type": "banner",
+                "meta": {
+                  "adaptercode": "teal"
+                }
+              }
+            }
           },
           "type": "banner"
         }

@@ -231,6 +231,7 @@ import (
 	"github.com/prebid/prebid-server/v4/adapters/tappx"
 	"github.com/prebid/prebid-server/v4/adapters/targetVideo"
 	"github.com/prebid/prebid-server/v4/adapters/teads"
+	"github.com/prebid/prebid-server/v4/adapters/teal"
 	"github.com/prebid/prebid-server/v4/adapters/telaria"
 	"github.com/prebid/prebid-server/v4/adapters/teqblaze"
 	"github.com/prebid/prebid-server/v4/adapters/theadx"

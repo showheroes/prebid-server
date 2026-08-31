@@ -1,11 +1,11 @@
 endpoint: "https://a.bids.ws/openrtb2/auction"
-endpointCompression: gzip
 maintainer:
   email: prebid@teal.works
 gvlVendorID: 1378
+endpointCompression: gzip
 modifyingVastXmlAllowed: true
-openrtb:
-  version: 2.6
+geoscope:
+  - global
 capabilities:
   app:
     mediaTypes:
@@ -18,6 +18,10 @@ capabilities:
       - video
       - native
 userSync:
+  key: "teal"
   iframe:
     url: "https://bids.ws/load-pbs.html?gdpr={{.GDPR}}&gdpr_consent={{.GDPRConsent}}&us_privacy={{.USPrivacy}}&gpp={{.GPP}}&gpp_sid={{.GPPSID}}&redirect_url={{.RedirectURL}}"
-    userMacro: "{UID}"
+openrtb:
+  version: 2.6
+  multiformat-supported: true
+  gpp-supported: true

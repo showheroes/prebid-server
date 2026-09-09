@@ -24,6 +24,7 @@
       "expectedRequest": {
         "uri": "https://vast.example.com/app",
         "headers": {
+          "X-Pbs-Auction-Start": ["0"],
           "Accept": ["application/xml, text/xml, */*"],
           "User-Agent": ["ExampleApp/1.0 (iPhone)"],
           "X-Forwarded-For": ["198.51.100.7"],

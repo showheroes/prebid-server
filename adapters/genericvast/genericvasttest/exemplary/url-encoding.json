@@ -33,6 +33,7 @@
       "expectedRequest": {
         "uri": "https://vast.example.com/tag?impid=imp-1&ua=Mozilla%2F5.0+%28X11%3B+Linux+x86_64%29",
         "headers": {
+          "X-Pbs-Auction-Start": ["0"],
           "Accept": ["application/xml, text/xml, */*"],
           "User-Agent": ["Mozilla/5.0"],
           "X-Forwarded-For": ["203.0.113.5"],

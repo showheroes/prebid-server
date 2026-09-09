@@ -22,6 +22,7 @@
       "expectedRequest": {
         "uri": "https://vast.example.com/tag?n=3",
         "headers": {
+          "X-Pbs-Auction-Start": ["0"],
           "Accept": ["application/xml, text/xml, */*"],
           "Referer": ["https://publisher.example.com/page"],
           "X-Device-Referer": ["https://publisher.example.com/page"]

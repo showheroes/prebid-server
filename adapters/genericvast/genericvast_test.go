@@ -3,6 +3,7 @@ package genericvast
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/prebid/openrtb/v20/openrtb2"
 	"github.com/prebid/prebid-server/v4/adapters"
@@ -16,6 +17,9 @@ func TestJsonSamples(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Builder returned unexpected error %v", err)
 	}
+
+	// Pin the auction-start header so exemplary request fixtures stay deterministic.
+	bidder.(*adapter).now = func() time.Time { return time.Unix(0, 0) }
 
 	adapterstest.RunJSONBidderTest(t, "genericvasttest", &xmlBodyBidder{Bidder: bidder})
 }

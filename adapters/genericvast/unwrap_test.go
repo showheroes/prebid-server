@@ -49,6 +49,165 @@ func staticFetcher(body string) vastFetcher {
 	}
 }
 
+func TestUnwrapNamespaceContexts(t *testing.T) {
+	for _, test := range []struct{ name, terminal, wrapper string }{
+		{"inline", `<VAST><Ad><InLine xmlns:vendor="urn:vendor"><Extensions><Extension><vendor:Data/></Extension></Extensions></InLine></Ad></VAST>`, wrapperVAST},
+		{"extension", `<VAST><Ad><InLine><Extensions><Extension xmlns:vendor="urn:vendor"><vendor:Data/></Extension></Extensions></InLine></Ad></VAST>`, wrapperVAST},
+		{"container", `<VAST><Ad><InLine><Extensions xmlns:vendor="urn:vendor"><Extension><vendor:Data/></Extension></Extensions></InLine></Ad></VAST>`, wrapperVAST},
+		{"verification", inlineVAST, `<VAST xmlns:vendor="urn:vendor"><Ad><Wrapper><VASTAdTagURI>https://next</VASTAdTagURI><AdVerifications><Verification vendor="example"><vendor:Data/></Verification></AdVerifications></Wrapper></Ad></VAST>`},
+		{"linear", `<VAST><Ad><InLine><Creatives><Creative><Linear xmlns:vendor="urn:vendor"><AdParameters><vendor:Data/></AdParameters></Linear></Creative></Creatives></InLine></Ad></VAST>`, wrapperVAST},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			merged, ok := unwrapVAST(staticFetcher(test.terminal), []byte(test.wrapper), nil, time.Now().Add(time.Second))
+			if !ok {
+				t.Fatal("unwrap failed")
+			}
+			decoder := xml.NewDecoder(strings.NewReader(merged))
+			for {
+				token, err := decoder.Token()
+				if err != nil {
+					t.Fatalf("missing Data or invalid XML: %v", err)
+				}
+				if element, ok := token.(xml.StartElement); ok && element.Name.Local == "Data" {
+					if element.Name.Space != "urn:vendor" {
+						t.Errorf("incorrect binding: %+v", element.Name)
+					}
+					break
+				}
+			}
+		})
+	}
+}
+
+func TestUnwrapFollowAdditionalWrappers(t *testing.T) {
+	for _, value := range []string{"", "true", "false", "1", "0"} {
+		for _, nested := range []bool{false, true} {
+			t.Run(value+strconv.FormatBool(nested), func(t *testing.T) {
+				wrapper := wrapperVAST
+				if value != "" {
+					wrapper = strings.Replace(wrapper, "<Wrapper>", `<Wrapper followAdditionalWrappers="`+value+`">`, 1)
+				}
+				calls := 0
+				fetch := func(_ context.Context, _ string, _ time.Duration, _ http.Header) ([]byte, error) {
+					calls++
+					if calls == 1 && nested {
+						return []byte(wrapperVAST), nil
+					}
+					return []byte(inlineVAST), nil
+				}
+				_, ok := unwrapVAST(fetch, []byte(wrapper), nil, time.Now().Add(time.Second))
+				blocked := nested && (value == "false" || value == "0")
+				wantCalls := 1
+				if nested && !blocked {
+					wantCalls = 2
+				}
+				if ok == blocked || calls != wantCalls {
+					t.Errorf("success=%v, calls=%d; blocked=%v, want calls=%d", ok, calls, blocked, wantCalls)
+				}
+			})
+		}
+	}
+}
+
+func TestUnwrapCreativeTrackingAndIcons(t *testing.T) {
+	const terminal = `<VAST><Ad><InLine><Creatives><Creative sequence="1" apiFramework="VPAID" custom="retained"><Linear><Icons><Icon program="terminal"><StaticResource>https://terminal</StaticResource></Icon></Icons></Linear></Creative><Creative sequence="2"><Linear/></Creative><Creative sequence="3"><Linear/></Creative></Creatives></InLine></Ad></VAST>`
+	const wrapper = `<VAST><Ad><Wrapper><VASTAdTagURI>https://next</VASTAdTagURI><Creatives><Creative><Linear><TrackingEvents><Tracking event="start">https://shared</Tracking></TrackingEvents><Icons><Icon program="terminal"><StaticResource>https://outer-override</StaticResource></Icon><Icon program="nearest"><StaticResource>https://outer</StaticResource></Icon><Icon program="outer-only"><StaticResource>https://outer-only</StaticResource></Icon></Icons></Linear></Creative><Creative sequence="2"><Linear><TrackingEvents><Tracking event="complete">https://second</Tracking></TrackingEvents><VideoClicks><ClickTracking>https://click-second</ClickTracking><CustomClick>https://custom-second</CustomClick></VideoClicks></Linear></Creative><Creative sequence="9"><Linear><TrackingEvents><Tracking>https://unmatched</Tracking></TrackingEvents></Linear></Creative></Creatives></Wrapper></Ad></VAST>`
+	const innerWrapper = `<VAST><Ad><Wrapper><VASTAdTagURI>https://terminal</VASTAdTagURI><Creatives><Creative><Linear><Icons><Icon program="nearest"><StaticResource>https://inner</StaticResource></Icon></Icons></Linear></Creative></Creatives></Wrapper></Ad></VAST>`
+	calls := 0
+	fetch := func(_ context.Context, _ string, _ time.Duration, _ http.Header) ([]byte, error) {
+		calls++
+		if calls == 1 {
+			return []byte(innerWrapper), nil
+		}
+		return []byte(terminal), nil
+	}
+	merged, ok := unwrapVAST(fetch, []byte(wrapper), nil, time.Now().Add(time.Second))
+	if !ok {
+		t.Fatal("unwrap failed")
+	}
+	doc, err := parseVAST([]byte(merged))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, creative := range doc.Ads[0].InLine.Creatives.Creative {
+		linear := creative.Linear
+		wantTracking := 1
+		if index == 1 {
+			wantTracking = 2
+		}
+		if len(linear.TrackingEvents.Tracking) != wantTracking {
+			t.Errorf("creative %d tracking=%+v", index, linear.TrackingEvents)
+		}
+		if linear.TrackingEvents.Tracking[0].text() != "https://shared" {
+			t.Error("missing shared tracker")
+		}
+		if index == 1 {
+			if linear.VideoClicks == nil || linear.VideoClicks.ClickTracking[0].text() != "https://click-second" || linear.VideoClicks.CustomClicks[0].text() != "https://custom-second" {
+				t.Error("missing matched click tracking")
+			}
+		} else if linear.VideoClicks != nil {
+			t.Error("click tracking attached to unrelated creative")
+		}
+		icons := make(map[string]string)
+		for _, icon := range linear.Icons.Icon {
+			icons[iconProgram(icon)] = icon.Inner
+		}
+		if !strings.Contains(icons["nearest"], "https://inner") || !strings.Contains(icons["outer-only"], "https://outer-only") {
+			t.Errorf("wrong icon precedence: %v", icons)
+		}
+		if index == 0 && !strings.Contains(icons["terminal"], ">https://terminal<") {
+			t.Error("terminal icon overwritten")
+		}
+	}
+	if !strings.Contains(merged, `apiFramework="VPAID"`) || !strings.Contains(merged, `custom="retained"`) {
+		t.Error("Creative attributes lost")
+	}
+	if strings.Contains(merged, "https://unmatched") {
+		t.Error("unmatched tracker merged")
+	}
+}
+
+func TestUnwrapViewabilityOrder(t *testing.T) {
+	terminal := `<VAST><Ad><InLine><ViewableImpression><Viewable>https://inline-view</Viewable><NotViewable>https://inline-not</NotViewable><ViewUndetermined>https://inline-unknown</ViewUndetermined></ViewableImpression></InLine></Ad></VAST>`
+	wrapper := strings.Replace(wrapperVAST, `</ViewableImpression>`, `<NotViewable>https://wrapper-not</NotViewable><ViewUndetermined>https://wrapper-unknown</ViewUndetermined></ViewableImpression>`, 1)
+	merged, ok := unwrapVAST(staticFetcher(terminal), []byte(wrapper), nil, time.Now().Add(time.Second))
+	if !ok {
+		t.Fatal("unwrap failed")
+	}
+	doc, err := parseVAST([]byte(merged))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Viewable", "Viewable", "NotViewable", "NotViewable", "ViewUndetermined", "ViewUndetermined"}
+	items := doc.Ads[0].InLine.ViewableImpr.Items
+	if len(items) != len(want) {
+		t.Fatalf("got %d items", len(items))
+	}
+	for index, item := range items {
+		if item.XMLName.Local != want[index] {
+			t.Errorf("item %d=%s", index, item.XMLName.Local)
+		}
+	}
+}
+
+func TestMakeBidsInitialAdsAndFirstDownstreamAd(t *testing.T) {
+	initial := `<VAST><Ad id="first"><Wrapper><VASTAdTagURI>https://first</VASTAdTagURI></Wrapper></Ad><Ad id="second"><Wrapper><VASTAdTagURI>https://second</VASTAdTagURI></Wrapper></Ad></VAST>`
+	bidder := &adapter{fetch: func(_ context.Context, uri string, _ time.Duration, _ http.Header) ([]byte, error) {
+		return []byte(`<VAST><Ad id="` + strings.TrimPrefix(uri, "https://") + `"><InLine/></Ad><Ad id="ignored"><Wrapper><VASTAdTagURI>https://never</VASTAdTagURI></Wrapper></Ad></VAST>`), nil
+	}}
+	request := &openrtb2.BidRequest{TMax: 1000, Imp: []openrtb2.Imp{{ID: "imp", Ext: json.RawMessage(`{"bidder":{"unwrap":true,"cpm":2}}`)}}}
+	response, errs := bidder.MakeBids(request, &adapters.RequestData{Headers: http.Header{}}, &adapters.ResponseData{StatusCode: 200, Body: []byte(initial)})
+	if len(errs) != 0 || response == nil || len(response.Bids) != 2 {
+		t.Fatalf("response=%+v, errors=%v", response, errs)
+	}
+	for index, id := range []string{"first", "second"} {
+		bid := response.Bids[index].Bid
+		if bid.ID != id || bid.Price != 1 || strings.Contains(bid.AdM, "ignored") {
+			t.Errorf("unexpected bid=%+v", bid)
+		}
+	}
+}
+
 func TestUnwrapVASTMergesCustomClicks(t *testing.T) {
 	for _, existing := range []bool{false, true} {
 		t.Run(strconv.FormatBool(existing), func(t *testing.T) {

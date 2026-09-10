@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -109,6 +110,12 @@ func unwrapDocument(fetch vastFetcher, doc *vastDoc, headers http.Header, deadli
 		_, next, ok := fetchWithRetry(fetch, uri, headers, deadline)
 		if !ok {
 			return "", false
+		}
+		for _, attr := range ad.Wrapper.Attrs {
+			value := strings.TrimSpace(attr.Value)
+			if attr.Name.Space == "" && attr.Name.Local == "followAdditionalWrappers" && (value == "false" || value == "0") && next.Ads[0].Wrapper != nil {
+				return "", false
+			}
 		}
 		doc = next
 	}

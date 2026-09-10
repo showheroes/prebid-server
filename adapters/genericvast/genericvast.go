@@ -83,7 +83,7 @@ func encodeURL(raw string) (string, error) {
 	}
 
 	query := url.Values{}
-	for _, queryParam := range strings.Split(queryParamsRaw, "&") {
+	for queryParam := range strings.SplitSeq(queryParamsRaw, "&") {
 		k, v, _ := strings.Cut(queryParam, "=")
 		if k == "" {
 			continue

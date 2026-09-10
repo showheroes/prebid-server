@@ -23,6 +23,7 @@ type vastDoc struct {
 type vastAd struct {
 	ID       string       `xml:"id,attr,omitempty"`
 	Sequence string       `xml:"sequence,attr,omitempty"`
+	Attrs    []xml.Attr   `xml:",any,attr"`
 	InnerXML string       `xml:",innerxml"`
 	InLine   *vastInLine  `xml:"InLine,omitempty"`
 	Wrapper  *vastWrapper `xml:"Wrapper,omitempty"`

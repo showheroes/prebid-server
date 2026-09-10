@@ -88,7 +88,7 @@ func unwrapVAST(fetch vastFetcher, initial []byte, headers http.Header, deadline
 				return "", false
 			}
 			mergeIntoInLine(ad.InLine, tracking)
-			merged, err := marshalMergedVAST(doc.Version, ad)
+			merged, err := marshalMergedVAST(doc, ad)
 			if err != nil {
 				return "", false
 			}

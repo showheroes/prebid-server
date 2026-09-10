@@ -3,8 +3,11 @@ package genericvast
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -46,6 +49,255 @@ func staticFetcher(body string) vastFetcher {
 	}
 }
 
+func TestElementText(t *testing.T) {
+	for _, test := range []struct {
+		name, inner, want string
+	}{
+		{"plain", "  plain text  ", "plain text"},
+		{"entities", " A &amp; B &lt;C&gt; &#38; &#x26; ", "A & B <C> & &"},
+		{"cdata", " <![CDATA[A &amp; B]]> ", "A &amp; B"},
+		{"mixed", " A &amp; <![CDATA[B <C>]]><![CDATA[ & D]]> ", "A & B <C> & D"},
+		{"empty", "", ""},
+		{"malformed", "A & B", ""},
+		{"unclosed", "<![CDATA[A", ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := elementText(test.inner); got != test.want {
+				t.Errorf("elementText(%q) = %q, want %q", test.inner, got, test.want)
+			}
+		})
+	}
+}
+
+func TestUnwrapVASTDecodesWrapperURL(t *testing.T) {
+	for _, inner := range []string{
+		`https://downstream.example.com/?a=1&amp;b=2`,
+		`https://downstream.example.com/?a=1&#38;b=2`,
+		`<![CDATA[https://downstream.example.com/?a=1&b=2]]>`,
+		`https://downstream.example.com/?a=1<![CDATA[&b=2]]>`,
+		`https://downstream.example.com/?a=1&b=2`,
+	} {
+		t.Run(inner, func(t *testing.T) {
+			wrapper := strings.Replace(wrapperVAST, `<![CDATA[https://downstream.example.com/vast.xml]]>`, inner, 1)
+			calls := 0
+			fetch := func(_ context.Context, uri string, _ time.Duration, _ http.Header) ([]byte, error) {
+				calls++
+				if uri != "https://downstream.example.com/?a=1&b=2" {
+					t.Errorf("fetch URL = %q", uri)
+				}
+				return []byte(inlineVAST), nil
+			}
+			_, ok := unwrapVAST(fetch, []byte(wrapper), nil, time.Now().Add(time.Second))
+			malformed := inner == `https://downstream.example.com/?a=1&b=2`
+			if malformed {
+				if ok || calls != 0 {
+					t.Fatalf("malformed URI: success=%v, fetches=%d", ok, calls)
+				}
+			} else if !ok || calls != 1 {
+				t.Fatalf("valid URI: success=%v, fetches=%d", ok, calls)
+			}
+		})
+	}
+}
+
+func TestUnwrapVASTEscapesAdSystem(t *testing.T) {
+	wrapper := strings.Replace(wrapperVAST, "WrapSSP", `<![CDATA[Wrapper & <SSP>]]>`, 1)
+	terminal := strings.Replace(inlineVAST, "InlineSSP", `Inline &amp; &lt;SSP&gt;`, 1)
+	merged, ok := unwrapVAST(staticFetcher(terminal), []byte(wrapper), nil, time.Now().Add(time.Second))
+	if !ok {
+		t.Fatal("expected unwrapping to succeed")
+	}
+	var decoded struct {
+		AdSystem string `xml:"Ad>InLine>AdSystem"`
+	}
+	if err := xml.Unmarshal([]byte(merged), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.AdSystem != "Wrapper & <SSP>,Inline & <SSP>" {
+		t.Errorf("unexpected AdSystem: %q", decoded.AdSystem)
+	}
+}
+
+func TestUnwrapVASTPreservesLinearAttributes(t *testing.T) {
+	for _, offset := range []string{"00:00:05", "25%"} {
+		t.Run(offset, func(t *testing.T) {
+			terminal := strings.Replace(inlineVAST, "<Linear>", `<Linear skipoffset="`+offset+`" custom="keep &amp; escape">`, 1)
+			merged, ok := unwrapVAST(staticFetcher(terminal), []byte(wrapperVAST), nil, time.Now().Add(time.Second))
+			if !ok {
+				t.Fatal("expected unwrapping to succeed")
+			}
+			var decoded struct {
+				Linear struct {
+					SkipOffset string `xml:"skipoffset,attr"`
+					Custom     string `xml:"custom,attr"`
+				} `xml:"Ad>InLine>Creatives>Creative>Linear"`
+			}
+			if err := xml.Unmarshal([]byte(merged), &decoded); err != nil {
+				t.Fatal(err)
+			}
+			if decoded.Linear.SkipOffset != offset || decoded.Linear.Custom != "keep & escape" {
+				t.Errorf("unexpected Linear attributes: %+v", decoded.Linear)
+			}
+		})
+	}
+}
+
+func TestUnwrapVASTOrdersVAST42Elements(t *testing.T) {
+	const terminal = `<VAST xmlns="http://www.iab.com/VAST" version="4.2"><Ad id="inline"><InLine>
+<AdSystem>InlineSSP</AdSystem>
+<Error>https://example.com/error</Error>
+<Extensions><Extension type="custom"><Custom>retained</Custom></Extension></Extensions>
+<Impression>https://example.com/impression</Impression>
+<Pricing model="CPM" currency="EUR">1.5</Pricing>
+<ViewableImpression><Viewable>https://example.com/viewable</Viewable></ViewableImpression>
+<AdServingId>serving-id</AdServingId>
+<AdTitle><![CDATA[Title & details]]></AdTitle>
+<AdVerifications><Verification vendor="inline"><JavaScriptResource apiFramework="omid">https://example.com/verify.js</JavaScriptResource></Verification></AdVerifications>
+<Advertiser>brand.example.com</Advertiser>
+<Category authority="https://example.com/categories">category-1</Category>
+<Category authority="https://example.com/categories">category-2</Category>
+<Creatives><Creative id="creative-id">
+<CreativeExtensions><CreativeExtension type="text/xml"><Custom>creative metadata</Custom></CreativeExtension></CreativeExtensions>
+<Linear skipoffset="25%">
+<Icons><Icon program="AdChoices" width="20" height="20" xPosition="0" yPosition="0"><StaticResource creativeType="image/png">https://example.com/icon.png</StaticResource></Icon></Icons>
+<TrackingEvents><Tracking event="complete">https://example.com/complete</Tracking></TrackingEvents>
+<AdParameters xmlEncoded="false"><![CDATA[{"key":"value"}]]></AdParameters>
+<Duration>00:00:15</Duration>
+<MediaFiles><MediaFile delivery="progressive" type="video/mp4" width="640" height="360">https://example.com/video.mp4</MediaFile></MediaFiles>
+<VideoClicks><ClickTracking>https://example.com/click</ClickTracking><ClickThrough>https://example.com/landing</ClickThrough><CustomClick>https://example.com/custom</CustomClick></VideoClicks>
+</Linear>
+<UniversalAdId idRegistry="example.com">creative-1</UniversalAdId>
+<UniversalAdId idRegistry="other.example.com">creative-2</UniversalAdId>
+</Creative></Creatives>
+<Description>description</Description>
+<Expires>3600</Expires>
+<Survey type="text/html">https://example.com/survey</Survey>
+</InLine></Ad></VAST>`
+	merged, ok := unwrapVAST(staticFetcher(terminal), []byte(wrapperVAST), nil, time.Now().Add(time.Second))
+	if !ok {
+		t.Fatal("expected unwrapping to succeed")
+	}
+	t.Logf("VAST42 input: %s", strings.ReplaceAll(terminal, "\n", ""))
+	t.Logf("VAST42 output: %s", strings.ReplaceAll(merged, "\n", ""))
+	children := make(map[string][]string)
+	var path []string
+	decoder := xml.NewDecoder(strings.NewReader(merged))
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch element := token.(type) {
+		case xml.StartElement:
+			parent := strings.Join(path, "/")
+			children[parent] = append(children[parent], element.Name.Local)
+			path = append(path, element.Name.Local)
+		case xml.EndElement:
+			path = path[:len(path)-1]
+		}
+	}
+	const inlinePath = "VAST/Ad/InLine"
+	const creativePath = inlinePath + "/Creatives/Creative"
+	for parent, want := range map[string][]string{
+		inlinePath:                           {"AdSystem", "Error", "Error", "Extensions", "Impression", "Impression", "Pricing", "ViewableImpression", "AdServingId", "AdTitle", "AdVerifications", "Advertiser", "Category", "Category", "Creatives", "Description", "Expires", "Survey"},
+		creativePath:                         {"CreativeExtensions", "Linear", "UniversalAdId", "UniversalAdId"},
+		creativePath + "/Linear":             {"Icons", "TrackingEvents", "AdParameters", "Duration", "MediaFiles", "VideoClicks"},
+		creativePath + "/Linear/VideoClicks": {"ClickTracking", "ClickTracking", "ClickThrough", "CustomClick"},
+	} {
+		if !slices.Equal(children[parent], want) {
+			t.Errorf("%s children = %v, want %v", parent, children[parent], want)
+		}
+	}
+	doc, err := parseVAST([]byte(merged))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inline := doc.Ads[0].InLine
+	for name, values := range map[string][2]string{
+		"AdServingId":  {inline.AdServingID.text(), "serving-id"},
+		"AdTitle":      {inline.AdTitle.text(), "Title & details"},
+		"Description":  {inline.Description.text(), "description"},
+		"Expires":      {inline.Expires.text(), "3600"},
+		"Survey":       {inline.Survey.text(), "https://example.com/survey"},
+		"AdParameters": {inline.firstLinear().AdParameters.text(), `{"key":"value"}`},
+	} {
+		if values[0] != values[1] {
+			t.Errorf("%s = %q, want %q", name, values[0], values[1])
+		}
+	}
+	if inline.Categories[0].text() != "category-1" || inline.Categories[1].text() != "category-2" {
+		t.Error("category values changed")
+	}
+	creative := inline.Creatives.Creative[0]
+	if creative.UniversalAdIDs[0].text() != "creative-1" || creative.UniversalAdIDs[1].text() != "creative-2" {
+		t.Error("universal ad IDs changed")
+	}
+}
+
+func TestUnwrapVASTPreservesTerminalRootAttributes(t *testing.T) {
+	for _, namespace := range []string{"", "urn:vast"} {
+		t.Run("namespace="+namespace, func(t *testing.T) {
+			terminal := strings.Replace(inlineVAST, `<VAST version="4.2">`,
+				`<VAST version="4.2" xmlns="`+namespace+`" xmlns:vendor="urn:vendor" data-source="test &amp; source" vendor:flag="enabled">`, 1)
+			terminal = strings.Replace(terminal, `</InLine>`,
+				`<Extensions><Extension><vendor:Tracking vendor:event="view"><![CDATA[https://example.invalid/?a=1&b=2]]></vendor:Tracking></Extension></Extensions></InLine>`, 1)
+			merged, ok := unwrapVAST(staticFetcher(terminal), []byte(wrapperVAST), nil, time.Now().Add(time.Second))
+			if !ok {
+				t.Fatal("expected unwrapping to succeed")
+			}
+			decoder := xml.NewDecoder(strings.NewReader(merged))
+			foundTracking := false
+			for {
+				token, err := decoder.Token()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				element, ok := token.(xml.StartElement)
+				if !ok {
+					continue
+				}
+				if element.Name.Local == "VAST" {
+					if element.Name.Space != namespace {
+						t.Errorf("root namespace = %q, want %q", element.Name.Space, namespace)
+					}
+					attributes := make(map[xml.Name]string)
+					for _, attribute := range element.Attr {
+						attributes[attribute.Name] = attribute.Value
+					}
+					for name, value := range map[xml.Name]string{
+						{Local: "version"}:                   "4.2",
+						{Local: "data-source"}:               "test & source",
+						{Space: "xmlns", Local: "vendor"}:    "urn:vendor",
+						{Space: "urn:vendor", Local: "flag"}: "enabled",
+					} {
+						if attributes[name] != value {
+							t.Errorf("root attribute %v = %q, want %q", name, attributes[name], value)
+						}
+					}
+				}
+				if element.Name.Local == "Tracking" && element.Name.Space == "urn:vendor" {
+					foundTracking = true
+					if len(element.Attr) != 1 || element.Attr[0].Name != (xml.Name{Space: "urn:vendor", Local: "event"}) {
+						t.Errorf("unexpected tracking attributes: %v", element.Attr)
+					}
+				}
+			}
+			if !foundTracking {
+				t.Fatal("missing Tracking element bound to urn:vendor")
+			}
+			if !strings.Contains(merged, `<![CDATA[https://example.invalid/?a=1&b=2]]>`) {
+				t.Fatal("extension CDATA was not preserved")
+			}
+		})
+	}
+}
+
 func TestUnwrapVASTMergesTracking(t *testing.T) {
 	merged, ok := unwrapVAST(staticFetcher(inlineVAST), []byte(wrapperVAST), nil, time.Now().Add(time.Second))
 	if !ok {
@@ -80,7 +332,7 @@ func TestUnwrapVASTMergesTracking(t *testing.T) {
 	if !strings.Contains(merged, `<Tracking event="start"><![CDATA[https://trk.start]]></Tracking></TrackingEvents>`) {
 		t.Errorf("wrapper tracking not merged into existing TrackingEvents:\n%s", merged)
 	}
-	if !strings.Contains(merged, `<ClickTracking><![CDATA[https://clk.wrap]]></ClickTracking></VideoClicks>`) {
+	if !strings.Contains(merged, `<ClickTracking><![CDATA[https://clk.wrap]]></ClickTracking><ClickThrough>`) {
 		t.Errorf("wrapper click tracking not merged into existing VideoClicks:\n%s", merged)
 	}
 	if !strings.Contains(merged, "<ViewableImpression><Viewable><![CDATA[https://view.wrap]]></Viewable></ViewableImpression>") {

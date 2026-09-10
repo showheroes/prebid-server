@@ -12,9 +12,10 @@ import (
 // verbatim (attributes, CDATA, and unknown descendants) so a decode/encode round-trip
 // stays loss-tolerant.
 type vastDoc struct {
-	XMLName xml.Name `xml:"VAST"`
-	Version string   `xml:"version,attr"`
-	Ads     []vastAd `xml:"Ad"`
+	XMLName xml.Name   `xml:"VAST"`
+	Version string     `xml:"version,attr"`
+	Attrs   []xml.Attr `xml:",any,attr"`
+	Ads     []vastAd   `xml:"Ad"`
 }
 
 // vastAd captures the <Ad> element. InnerXML is retained so a wrapper/inline ad can be
@@ -34,7 +35,7 @@ type rawEl struct {
 	Inner string     `xml:",innerxml"`
 }
 
-// text returns the element's inner text with an optional CDATA wrapper removed.
+// text returns the element's decoded character data.
 func (r *rawEl) text() string {
 	if r == nil {
 		return ""
@@ -52,14 +53,20 @@ type anyEl struct {
 
 type vastInLine struct {
 	AdSystem        *rawEl              `xml:"AdSystem,omitempty"`
-	Advertiser      *rawEl              `xml:"Advertiser,omitempty"`
+	Errors          []rawEl             `xml:"Error"`
+	Extensions      *extensions         `xml:"Extensions,omitempty"`
 	Impressions     []rawEl             `xml:"Impression"`
 	Pricing         *vastPricing        `xml:"Pricing,omitempty"`
-	Errors          []rawEl             `xml:"Error"`
 	ViewableImpr    *viewableImpression `xml:"ViewableImpression,omitempty"`
+	AdServingID     *rawEl              `xml:"AdServingId,omitempty"`
+	AdTitle         *rawEl              `xml:"AdTitle,omitempty"`
 	AdVerifications *adVerifications    `xml:"AdVerifications,omitempty"`
+	Advertiser      *rawEl              `xml:"Advertiser,omitempty"`
+	Categories      []rawEl             `xml:"Category"`
 	Creatives       *vastCreatives      `xml:"Creatives,omitempty"`
-	Extensions      *extensions         `xml:"Extensions,omitempty"`
+	Description     *rawEl              `xml:"Description,omitempty"`
+	Expires         *rawEl              `xml:"Expires,omitempty"`
+	Survey          *rawEl              `xml:"Survey,omitempty"`
 	Other           []anyEl             `xml:",any"`
 }
 
@@ -103,18 +110,23 @@ type vastCreatives struct {
 }
 
 type vastCreative struct {
-	ID       string      `xml:"id,attr,omitempty"`
-	AdID     string      `xml:"adId,attr,omitempty"`
-	Sequence string      `xml:"sequence,attr,omitempty"`
-	Linear   *vastLinear `xml:"Linear,omitempty"`
-	Other    []anyEl     `xml:",any"`
+	ID                 string      `xml:"id,attr,omitempty"`
+	AdID               string      `xml:"adId,attr,omitempty"`
+	Sequence           string      `xml:"sequence,attr,omitempty"`
+	CreativeExtensions *rawEl      `xml:"CreativeExtensions,omitempty"`
+	Linear             *vastLinear `xml:"Linear,omitempty"`
+	UniversalAdIDs     []rawEl     `xml:"UniversalAdId"`
+	Other              []anyEl     `xml:",any"`
 }
 
 type vastLinear struct {
+	Attrs          []xml.Attr      `xml:",any,attr"`
+	Icons          *rawEl          `xml:"Icons,omitempty"`
+	TrackingEvents *trackingEvents `xml:"TrackingEvents,omitempty"`
+	AdParameters   *rawEl          `xml:"AdParameters,omitempty"`
 	Duration       *rawEl          `xml:"Duration,omitempty"`
 	MediaFiles     *rawEl          `xml:"MediaFiles,omitempty"`
 	VideoClicks    *videoClicks    `xml:"VideoClicks,omitempty"`
-	TrackingEvents *trackingEvents `xml:"TrackingEvents,omitempty"`
 	Other          []anyEl         `xml:",any"`
 }
 
@@ -124,8 +136,10 @@ type trackingEvents struct {
 }
 
 type videoClicks struct {
-	Other         []anyEl `xml:",any"`
 	ClickTracking []rawEl `xml:"ClickTracking"`
+	ClickThrough  *rawEl  `xml:"ClickThrough,omitempty"`
+	CustomClicks  []rawEl `xml:"CustomClick"`
+	Other         []anyEl `xml:",any"`
 }
 
 // parseVAST decodes the VAST document. Leading whitespace, BOM, and XML
@@ -140,13 +154,15 @@ func parseVAST(body []byte) (*vastDoc, error) {
 	return &doc, nil
 }
 
-// elementText strips an optional CDATA wrapper and surrounding whitespace.
+// elementText decodes XML character data and trims surrounding whitespace.
 func elementText(inner string) string {
-	s := strings.TrimSpace(inner)
-	if strings.HasPrefix(s, "<![CDATA[") && strings.HasSuffix(s, "]]>") {
-		s = s[len("<![CDATA[") : len(s)-len("]]>")]
+	var value struct {
+		Text string `xml:",chardata"`
 	}
-	return strings.TrimSpace(s)
+	if err := xml.Unmarshal([]byte("<value>"+inner+"</value>"), &value); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(value.Text)
 }
 
 // advertiserValue returns the <Advertiser> text from an InLine or Wrapper, whichever is set.

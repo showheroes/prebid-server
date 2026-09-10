@@ -72,7 +72,7 @@ func mergeIntoInLine(in *vastInLine, t wrapperTracking) {
 		if own := in.AdSystem.text(); own != "" {
 			parts = append(parts, own)
 		}
-		in.AdSystem = &rawEl{Inner: strings.Join(parts, ",")}
+		in.AdSystem = &rawEl{Inner: xmlAttrEscape(strings.Join(parts, ","))}
 	}
 	if len(t.viewable) > 0 {
 		if in.ViewableImpr == nil {
@@ -125,9 +125,10 @@ func (in *vastInLine) firstLinear() *vastLinear {
 
 // outVAST is the marshaling envelope for a single merged inline ad.
 type outVAST struct {
-	XMLName xml.Name `xml:"VAST"`
-	Version string   `xml:"version,attr,omitempty"`
-	Ad      outAd    `xml:"Ad"`
+	XMLName xml.Name   `xml:"VAST"`
+	Version string     `xml:"version,attr,omitempty"`
+	Attrs   []xml.Attr `xml:",any,attr"`
+	Ad      outAd      `xml:"Ad"`
 }
 
 type outAd struct {
@@ -137,11 +138,19 @@ type outAd struct {
 }
 
 // marshalMergedVAST serializes a merged inline ad back to a VAST document.
-func marshalMergedVAST(version string, ad *vastAd) (string, error) {
+func marshalMergedVAST(doc *vastDoc, ad *vastAd) (string, error) {
+	version := doc.Version
 	if version == "" {
 		version = "4.0"
 	}
-	out := outVAST{Version: version, Ad: outAd{ID: ad.ID, Sequence: ad.Sequence, InLine: ad.InLine}}
+	attrs := make([]xml.Attr, len(doc.Attrs))
+	for index, attr := range doc.Attrs {
+		if attr.Name.Space == "xmlns" {
+			attr.Name = xml.Name{Local: "xmlns:" + attr.Name.Local}
+		}
+		attrs[index] = attr
+	}
+	out := outVAST{Version: version, Attrs: attrs, Ad: outAd{ID: ad.ID, Sequence: ad.Sequence, InLine: ad.InLine}}
 	b, err := xml.Marshal(out)
 	if err != nil {
 		return "", err

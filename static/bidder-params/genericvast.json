@@ -7,7 +7,6 @@
     "url": {
       "type": "string",
       "description": "The full URL the adapter will call (verbatim) to fetch a VAST response.",
-      "format": "uri",
       "minLength": 1
     },
     "cpm": {

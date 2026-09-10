@@ -15,6 +15,7 @@ type wrapperTracking struct {
 	extensions    []rawEl
 	tracking      []rawEl
 	clickTracking []rawEl
+	customClicks  []rawEl
 	adSystems     []string
 }
 
@@ -26,6 +27,7 @@ func (t *wrapperTracking) merge(o wrapperTracking) {
 	t.extensions = append(t.extensions, o.extensions...)
 	t.tracking = append(t.tracking, o.tracking...)
 	t.clickTracking = append(t.clickTracking, o.clickTracking...)
+	t.customClicks = append(t.customClicks, o.customClicks...)
 	t.adSystems = append(t.adSystems, o.adSystems...)
 }
 
@@ -54,6 +56,7 @@ func collectWrapperTracking(w *vastWrapper) wrapperTracking {
 			}
 			if c.Linear.VideoClicks != nil {
 				t.clickTracking = append(t.clickTracking, c.Linear.VideoClicks.ClickTracking...)
+				t.customClicks = append(t.customClicks, c.Linear.VideoClicks.CustomClicks...)
 			}
 		}
 	}
@@ -92,7 +95,7 @@ func mergeIntoInLine(in *vastInLine, t wrapperTracking) {
 		}
 		in.Extensions.Extension = append(in.Extensions.Extension, t.extensions...)
 	}
-	if len(t.tracking) > 0 || len(t.clickTracking) > 0 {
+	if len(t.tracking) > 0 || len(t.clickTracking) > 0 || len(t.customClicks) > 0 {
 		if lin := in.firstLinear(); lin != nil {
 			if len(t.tracking) > 0 {
 				if lin.TrackingEvents == nil {
@@ -100,11 +103,12 @@ func mergeIntoInLine(in *vastInLine, t wrapperTracking) {
 				}
 				lin.TrackingEvents.Tracking = append(lin.TrackingEvents.Tracking, t.tracking...)
 			}
-			if len(t.clickTracking) > 0 {
+			if len(t.clickTracking) > 0 || len(t.customClicks) > 0 {
 				if lin.VideoClicks == nil {
 					lin.VideoClicks = &videoClicks{}
 				}
 				lin.VideoClicks.ClickTracking = append(lin.VideoClicks.ClickTracking, t.clickTracking...)
+				lin.VideoClicks.CustomClicks = append(lin.VideoClicks.CustomClicks, t.customClicks...)
 			}
 		}
 	}
@@ -134,6 +138,7 @@ type outVAST struct {
 type outAd struct {
 	ID       string      `xml:"id,attr,omitempty"`
 	Sequence string      `xml:"sequence,attr,omitempty"`
+	Attrs    []xml.Attr  `xml:",any,attr"`
 	InLine   *vastInLine `xml:"InLine"`
 }
 
@@ -143,17 +148,25 @@ func marshalMergedVAST(doc *vastDoc, ad *vastAd) (string, error) {
 	if version == "" {
 		version = "4.0"
 	}
-	attrs := make([]xml.Attr, len(doc.Attrs))
-	for index, attr := range doc.Attrs {
-		if attr.Name.Space == "xmlns" {
-			attr.Name = xml.Name{Local: "xmlns:" + attr.Name.Local}
-		}
-		attrs[index] = attr
+	out := outVAST{
+		Version: version,
+		Attrs:   marshalAttrs(doc.Attrs),
+		Ad:      outAd{ID: ad.ID, Sequence: ad.Sequence, Attrs: marshalAttrs(ad.Attrs), InLine: ad.InLine},
 	}
-	out := outVAST{Version: version, Attrs: attrs, Ad: outAd{ID: ad.ID, Sequence: ad.Sequence, InLine: ad.InLine}}
 	b, err := xml.Marshal(out)
 	if err != nil {
 		return "", err
 	}
 	return string(b), nil
+}
+
+func marshalAttrs(source []xml.Attr) []xml.Attr {
+	attrs := make([]xml.Attr, len(source))
+	for index, attr := range source {
+		if attr.Name.Space == "xmlns" {
+			attr.Name = xml.Name{Local: "xmlns:" + attr.Name.Local}
+		}
+		attrs[index] = attr
+	}
+	return attrs
 }

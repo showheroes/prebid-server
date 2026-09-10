@@ -49,6 +49,106 @@ func staticFetcher(body string) vastFetcher {
 	}
 }
 
+func TestUnwrapVASTMergesCustomClicks(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		t.Run(strconv.FormatBool(existing), func(t *testing.T) {
+			terminal := `<VAST><Ad><InLine><Creatives><Creative><Linear>`
+			if existing {
+				terminal += `<VideoClicks><ClickThrough>https://landing</ClickThrough><CustomClick id="inline">https://custom.inline</CustomClick></VideoClicks>`
+			}
+			terminal += `</Linear></Creative></Creatives></InLine></Ad></VAST>`
+			wrapper := `<VAST><Ad><Wrapper><VASTAdTagURI>https://next</VASTAdTagURI><Creatives><Creative><Linear><VideoClicks><CustomClick id="first"><![CDATA[https://custom.first?a=1&b=2]]></CustomClick></VideoClicks></Linear></Creative></Creatives></Wrapper></Ad></VAST>`
+			calls := 0
+			fetch := func(_ context.Context, _ string, _ time.Duration, _ http.Header) ([]byte, error) {
+				calls++
+				if calls == 1 {
+					return []byte(strings.ReplaceAll(wrapper, "first", "second")), nil
+				}
+				return []byte(terminal), nil
+			}
+			merged, ok := unwrapVAST(fetch, []byte(wrapper), nil, time.Now().Add(time.Second))
+			if !ok || calls != 2 {
+				t.Fatalf("success=%v, calls=%d", ok, calls)
+			}
+			var decoded struct {
+				Clicks struct {
+					Custom []struct {
+						ID  string `xml:"id,attr"`
+						URL string `xml:",chardata"`
+					} `xml:"CustomClick"`
+					Tracking []string `xml:"ClickTracking"`
+					Through  string   `xml:"ClickThrough"`
+				} `xml:"Ad>InLine>Creatives>Creative>Linear>VideoClicks"`
+			}
+			if err := xml.Unmarshal([]byte(merged), &decoded); err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"first", "second"}
+			if existing {
+				want = append([]string{"inline"}, want...)
+				if decoded.Clicks.Through != "https://landing" {
+					t.Error("terminal ClickThrough changed")
+				}
+			}
+			if len(decoded.Clicks.Custom) != len(want) || len(decoded.Clicks.Tracking) != 0 {
+				t.Fatalf("unexpected clicks: %+v", decoded.Clicks)
+			}
+			for index, id := range want {
+				url := "https://custom." + id
+				if id != "inline" {
+					url += "?a=1&b=2"
+				}
+				if click := decoded.Clicks.Custom[index]; click.ID != id || click.URL != url {
+					t.Errorf("unexpected custom click: %+v", click)
+				}
+			}
+		})
+	}
+}
+
+func TestUnwrapVASTPreservesTerminalAdAttributes(t *testing.T) {
+	for _, conditional := range []string{"false", "true"} {
+		t.Run(conditional, func(t *testing.T) {
+			terminal := strings.Replace(inlineVAST, `<Ad id="in1">`, `<Ad id="terminal" sequence="2" conditionalAd="`+conditional+`" adType="video" custom="A &amp; B" xmlns:vendor="urn:terminal" vendor:flag="retained">`, 1)
+			terminal = strings.Replace(terminal, `</InLine>`, `<Extensions><Extension><vendor:Data>value</vendor:Data></Extension></Extensions></InLine>`, 1)
+			wrapper := strings.Replace(wrapperVAST, `<Ad id="w1">`, `<Ad id="wrapper" sequence="9" conditionalAd="true" adType="audio" wrapperOnly="discard" xmlns:vendor="urn:wrapper">`, 1)
+			merged, ok := unwrapVAST(staticFetcher(terminal), []byte(wrapper), nil, time.Now().Add(time.Second))
+			if !ok {
+				t.Fatal("expected unwrapping to succeed")
+			}
+			var decoded struct {
+				Ad struct {
+					Attrs      []xml.Attr `xml:",any,attr"`
+					Extensions []struct {
+						Data string `xml:"urn:terminal Data"`
+					} `xml:"InLine>Extensions>Extension"`
+				} `xml:"Ad"`
+			}
+			if err := xml.Unmarshal([]byte(merged), &decoded); err != nil {
+				t.Fatal(err)
+			}
+			want := map[xml.Name]string{
+				{Local: "id"}: "terminal", {Local: "sequence"}: "2",
+				{Local: "conditionalAd"}: conditional, {Local: "adType"}: "video",
+				{Local: "custom"}: "A & B", {Space: "xmlns", Local: "vendor"}: "urn:terminal",
+				{Space: "urn:terminal", Local: "flag"}: "retained",
+			}
+			for _, attr := range decoded.Ad.Attrs {
+				if attr.Name.Space == "xmlns" && attr.Name.Local != "vendor" {
+					continue
+				}
+				if value, exists := want[attr.Name]; !exists || attr.Value != value {
+					t.Errorf("unexpected or duplicate attribute: %+v", attr)
+				}
+				delete(want, attr.Name)
+			}
+			if len(want) != 0 || len(decoded.Ad.Extensions) == 0 || decoded.Ad.Extensions[0].Data != "value" {
+				t.Errorf("missing attributes=%v, extensions=%+v", want, decoded.Ad.Extensions)
+			}
+		})
+	}
+}
+
 func TestElementText(t *testing.T) {
 	for _, test := range []struct {
 		name, inner, want string

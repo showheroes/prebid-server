@@ -550,6 +550,86 @@ func TestUnwrapVASTMissingAdTagURI(t *testing.T) {
 	}
 }
 
+func TestMakeBidsWrapperExtensionNamespaces(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		scopes [5]string
+		prefix string
+		want   string
+	}{
+		{"root", [5]string{`xmlns:vendor="urn:first"`}, "vendor:", "urn:first"},
+		{"ad", [5]string{"", `xmlns:vendor="urn:first"`}, "vendor:", "urn:first"},
+		{"wrapper", [5]string{"", "", `xmlns:vendor="urn:first"`}, "vendor:", "urn:first"},
+		{"extensions", [5]string{"", "", "", `xmlns:vendor="urn:first"`}, "vendor:", "urn:first"},
+		{"extension", [5]string{"", "", "", "", `xmlns:vendor="urn:first"`}, "vendor:", "urn:first"},
+		{"shadowing", [5]string{`xmlns:vendor="urn:root"`, `xmlns:vendor="urn:ad"`, `xmlns:vendor="urn:wrapper"`, `xmlns:vendor="urn:container"`, `xmlns:vendor="urn:first"`}, "vendor:", "urn:first"},
+		{"default", [5]string{`xmlns="urn:first"`}, "", "urn:first"},
+		{"default-reset", [5]string{`xmlns="urn:root"`, "", "", "", `xmlns=""`}, "", ""},
+		{"no-default", [5]string{}, "", ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			first := `<VAST><Ad><Wrapper><VASTAdTagURI>https://next</VASTAdTagURI><Extensions><Extension><` + test.prefix + `Data id="first">first</` + test.prefix + `Data></Extension></Extensions></Wrapper></Ad></VAST>`
+			for index, tag := range []string{"VAST", "Ad", "Wrapper", "Extensions", "Extension"} {
+				if test.scopes[index] != "" {
+					first = strings.Replace(first, "<"+tag+">", "<"+tag+" "+test.scopes[index]+">", 1)
+				}
+			}
+			second := `<VAST xmlns:vendor="urn:second"><Ad><Wrapper><VASTAdTagURI>https://terminal</VASTAdTagURI><Extensions><Extension><vendor:Data id="second" vendor:flag="retained"><![CDATA[A & B]]></vendor:Data></Extension></Extensions></Wrapper></Ad></VAST>`
+			terminal := strings.Replace(inlineVAST, `<VAST version="4.2">`, `<VAST version="4.2" xmlns="urn:terminal-default" xmlns:vendor="urn:terminal">`, 1)
+			terminal = strings.Replace(terminal, `</InLine>`, `<Extensions><Extension><vendor:Data id="terminal">terminal</vendor:Data></Extension></Extensions></InLine>`, 1)
+			calls := 0
+			bidder := &adapter{fetch: func(_ context.Context, _ string, _ time.Duration, _ http.Header) ([]byte, error) {
+				calls++
+				if calls == 1 {
+					return []byte(second), nil
+				}
+				return []byte(terminal), nil
+			}}
+			request := &openrtb2.BidRequest{TMax: 1000, Imp: []openrtb2.Imp{{
+				ID: "imp", Ext: json.RawMessage(`{"bidder":{"unwrap":true,"cpm":1}}`),
+			}}}
+			response, errs := bidder.MakeBids(request, &adapters.RequestData{Headers: http.Header{}}, &adapters.ResponseData{StatusCode: http.StatusOK, Body: []byte(first)})
+			if len(errs) != 0 || response == nil || len(response.Bids) != 1 || calls != 2 {
+				t.Fatalf("response=%+v, errors=%v, fetches=%d", response, errs, calls)
+			}
+			want := map[string]string{"first": test.want, "second": "urn:second", "terminal": "urn:terminal"}
+			decoder := xml.NewDecoder(strings.NewReader(response.Bids[0].Bid.AdM))
+			for {
+				token, err := decoder.Token()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				element, ok := token.(xml.StartElement)
+				if !ok || element.Name.Local != "Data" {
+					continue
+				}
+				var id string
+				for _, attr := range element.Attr {
+					if attr.Name.Local == "id" {
+						id = attr.Value
+					}
+					if attr.Name.Local == "flag" && (attr.Name.Space != "urn:second" || attr.Value != "retained") {
+						t.Errorf("incorrect namespaced attribute: %+v", attr)
+					}
+				}
+				if namespace, exists := want[id]; !exists || element.Name.Space != namespace {
+					t.Errorf("Data %q namespace=%q, want %q (exists=%v)", id, element.Name.Space, namespace, exists)
+				}
+				delete(want, id)
+			}
+			if len(want) != 0 {
+				t.Errorf("missing extension data: %v", want)
+			}
+			if !strings.Contains(response.Bids[0].Bid.AdM, `<![CDATA[A & B]]>`) {
+				t.Error("wrapper extension CDATA changed")
+			}
+		})
+	}
+}
+
 func TestMakeBidsUnwrap(t *testing.T) {
 	a := &adapter{fetch: staticFetcher(inlineVAST), now: time.Now}
 	req := &openrtb2.BidRequest{

@@ -75,12 +75,15 @@ func unwrapDeadline(tmax int64, headers http.Header) time.Time {
 // It returns the merged VAST and ok=true on success, or ok=false when the chain must be
 // dropped (empty response, fetch/parse error, budget or wrapper-limit exceeded).
 func unwrapVAST(fetch vastFetcher, initial []byte, headers http.Header, deadline time.Time) (string, bool) {
-	var tracking wrapperTracking
 	doc, err := parseVAST(initial)
 	if err != nil || len(doc.Ads) == 0 {
 		return "", false
 	}
+	return unwrapDocument(fetch, doc, headers, deadline)
+}
 
+func unwrapDocument(fetch vastFetcher, doc *vastDoc, headers http.Header, deadline time.Time) (string, bool) {
+	var tracking wrapperTracking
 	for i := 0; ; i++ {
 		ad := &doc.Ads[0]
 		if ad.Wrapper == nil {

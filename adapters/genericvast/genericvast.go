@@ -240,7 +240,7 @@ func (a *adapter) buildBid(ad *vastAd, impID string, i int, version string, head
 	fields := ad
 
 	if unwrap {
-		merged, ok := unwrapVAST(a.fetch, []byte(adm), headers, deadline)
+		merged, ok := unwrapDocument(a.fetch, &vastDoc{Version: version, Ads: []vastAd{*ad}}, headers, deadline)
 		if !ok {
 			return adResult{}
 		}

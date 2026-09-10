@@ -72,6 +72,7 @@ type vastInLine struct {
 }
 
 type vastWrapper struct {
+	Attrs           []xml.Attr          `xml:",any,attr"`
 	AdSystem        *rawEl              `xml:"AdSystem,omitempty"`
 	Advertiser      *rawEl              `xml:"Advertiser,omitempty"`
 	VASTAdTagURI    *rawEl              `xml:"VASTAdTagURI,omitempty"`
@@ -102,8 +103,9 @@ type adVerifications struct {
 }
 
 type extensions struct {
-	Extension []rawEl `xml:"Extension"`
-	Other     []anyEl `xml:",any"`
+	Attrs     []xml.Attr `xml:",any,attr"`
+	Extension []rawEl    `xml:"Extension"`
+	Other     []anyEl    `xml:",any"`
 }
 
 type vastCreatives struct {
@@ -152,7 +154,42 @@ func parseVAST(body []byte) (*vastDoc, error) {
 	if err := dec.Decode(&doc); err != nil {
 		return nil, err
 	}
+	for index := range doc.Ads {
+		ad := &doc.Ads[index]
+		if ad.Wrapper == nil || ad.Wrapper.Extensions == nil {
+			continue
+		}
+		container := ad.Wrapper.Extensions
+		for extensionIndex := range container.Extension {
+			extension := &container.Extension[extensionIndex]
+			extension.Attrs = extensionAttrs(doc.Attrs, ad.Attrs, ad.Wrapper.Attrs, container.Attrs, extension.Attrs)
+		}
+	}
 	return &doc, nil
+}
+
+func extensionAttrs(scopes ...[]xml.Attr) []xml.Attr {
+	bindings := []xml.Attr{{Name: xml.Name{Local: "xmlns"}, Value: ""}}
+	positions := map[xml.Name]int{bindings[0].Name: 0}
+	for _, scope := range scopes {
+		for _, attr := range scope {
+			if attr.Name.Space != "xmlns" && attr.Name != (xml.Name{Local: "xmlns"}) {
+				continue
+			}
+			if index, exists := positions[attr.Name]; exists {
+				bindings[index] = attr
+			} else {
+				positions[attr.Name] = len(bindings)
+				bindings = append(bindings, attr)
+			}
+		}
+	}
+	for _, attr := range scopes[len(scopes)-1] {
+		if attr.Name.Space != "xmlns" && attr.Name != (xml.Name{Local: "xmlns"}) {
+			bindings = append(bindings, attr)
+		}
+	}
+	return marshalAttrs(bindings)
 }
 
 // elementText decodes XML character data and trims surrounding whitespace.

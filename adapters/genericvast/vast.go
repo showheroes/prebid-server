@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"io"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -32,8 +34,9 @@ type vastAd struct {
 // rawEl preserves an element's attributes and inner XML verbatim (CDATA-safe). The
 // element name comes from the containing field's tag.
 type rawEl struct {
-	Attrs []xml.Attr `xml:",any,attr"`
-	Inner string     `xml:",innerxml"`
+	Namespaces []xml.Attr `xml:"-"`
+	Attrs      []xml.Attr `xml:",any,attr"`
+	Inner      string     `xml:",innerxml"`
 }
 
 // text returns the element's decoded character data.
@@ -47,12 +50,14 @@ func (r *rawEl) text() string {
 // anyEl also preserves the element's own name, for pass-through of elements we don't
 // model explicitly.
 type anyEl struct {
-	XMLName xml.Name
-	Attrs   []xml.Attr `xml:",any,attr"`
-	Inner   string     `xml:",innerxml"`
+	Namespaces []xml.Attr `xml:"-"`
+	XMLName    xml.Name
+	Attrs      []xml.Attr `xml:",any,attr"`
+	Inner      string     `xml:",innerxml"`
 }
 
 type vastInLine struct {
+	Attrs           []xml.Attr          `xml:",any,attr"`
 	AdSystem        *rawEl              `xml:"AdSystem,omitempty"`
 	Errors          []rawEl             `xml:"Error"`
 	Extensions      *extensions         `xml:"Extensions,omitempty"`
@@ -93,13 +98,15 @@ type vastPricing struct {
 }
 
 type viewableImpression struct {
-	ID    string  `xml:"id,attr,omitempty"`
-	Items []anyEl `xml:",any"`
+	Attrs []xml.Attr `xml:",any,attr"`
+	ID    string     `xml:"id,attr,omitempty"`
+	Items []anyEl    `xml:",any"`
 }
 
 type adVerifications struct {
-	Verification []rawEl `xml:"Verification"`
-	Other        []anyEl `xml:",any"`
+	Attrs        []xml.Attr `xml:",any,attr"`
+	Verification []rawEl    `xml:"Verification"`
+	Other        []anyEl    `xml:",any"`
 }
 
 type extensions struct {
@@ -109,10 +116,12 @@ type extensions struct {
 }
 
 type vastCreatives struct {
+	Attrs    []xml.Attr     `xml:",any,attr"`
 	Creative []vastCreative `xml:"Creative"`
 }
 
 type vastCreative struct {
+	Attrs              []xml.Attr  `xml:",any,attr"`
 	ID                 string      `xml:"id,attr,omitempty"`
 	AdID               string      `xml:"adId,attr,omitempty"`
 	Sequence           string      `xml:"sequence,attr,omitempty"`
@@ -124,7 +133,7 @@ type vastCreative struct {
 
 type vastLinear struct {
 	Attrs          []xml.Attr      `xml:",any,attr"`
-	Icons          *rawEl          `xml:"Icons,omitempty"`
+	Icons          *vastIcons      `xml:"Icons,omitempty"`
 	TrackingEvents *trackingEvents `xml:"TrackingEvents,omitempty"`
 	AdParameters   *rawEl          `xml:"AdParameters,omitempty"`
 	Duration       *rawEl          `xml:"Duration,omitempty"`
@@ -133,16 +142,23 @@ type vastLinear struct {
 	Other          []anyEl         `xml:",any"`
 }
 
+type vastIcons struct {
+	Attrs []xml.Attr `xml:",any,attr"`
+	Icon  []rawEl    `xml:"Icon"`
+}
+
 type trackingEvents struct {
-	Tracking []rawEl `xml:"Tracking"`
-	Other    []anyEl `xml:",any"`
+	Attrs    []xml.Attr `xml:",any,attr"`
+	Tracking []rawEl    `xml:"Tracking"`
+	Other    []anyEl    `xml:",any"`
 }
 
 type videoClicks struct {
-	ClickTracking []rawEl `xml:"ClickTracking"`
-	ClickThrough  *rawEl  `xml:"ClickThrough,omitempty"`
-	CustomClicks  []rawEl `xml:"CustomClick"`
-	Other         []anyEl `xml:",any"`
+	Attrs         []xml.Attr `xml:",any,attr"`
+	ClickTracking []rawEl    `xml:"ClickTracking"`
+	ClickThrough  *rawEl     `xml:"ClickThrough,omitempty"`
+	CustomClicks  []rawEl    `xml:"CustomClick"`
+	Other         []anyEl    `xml:",any"`
 }
 
 // parseVAST decodes the VAST document. Leading whitespace, BOM, and XML
@@ -154,21 +170,15 @@ func parseVAST(body []byte) (*vastDoc, error) {
 	if err := dec.Decode(&doc); err != nil {
 		return nil, err
 	}
+	walker := namespaceWalker{}
+	scope := namespaceBindings(doc.Attrs)
 	for index := range doc.Ads {
-		ad := &doc.Ads[index]
-		if ad.Wrapper == nil || ad.Wrapper.Extensions == nil {
-			continue
-		}
-		container := ad.Wrapper.Extensions
-		for extensionIndex := range container.Extension {
-			extension := &container.Extension[extensionIndex]
-			extension.Attrs = extensionAttrs(doc.Attrs, ad.Attrs, ad.Wrapper.Attrs, container.Attrs, extension.Attrs)
-		}
+		walker.ad(&doc.Ads[index], scope)
 	}
 	return &doc, nil
 }
 
-func extensionAttrs(scopes ...[]xml.Attr) []xml.Attr {
+func namespaceBindings(scopes ...[]xml.Attr) []xml.Attr {
 	bindings := []xml.Attr{{Name: xml.Name{Local: "xmlns"}, Value: ""}}
 	positions := map[xml.Name]int{bindings[0].Name: 0}
 	for _, scope := range scopes {
@@ -184,12 +194,231 @@ func extensionAttrs(scopes ...[]xml.Attr) []xml.Attr {
 			}
 		}
 	}
-	for _, attr := range scopes[len(scopes)-1] {
-		if attr.Name.Space != "xmlns" && attr.Name != (xml.Name{Local: "xmlns"}) {
-			bindings = append(bindings, attr)
+	return bindings
+}
+
+type namespaceWalker struct {
+	output bool
+	target string
+}
+
+func (walker namespaceWalker) container(attrs *[]xml.Attr, inherited []xml.Attr) []xml.Attr {
+	if walker.output {
+		*attrs = marshalAttrs(*attrs)
+		return nil
+	}
+	return namespaceBindings(inherited, *attrs)
+}
+
+func (walker namespaceWalker) leaf(attrs, namespaces *[]xml.Attr, inner *string, inherited []xml.Attr, parent string) {
+	if !walker.output {
+		*namespaces = namespaceBindings(inherited, *attrs)
+		return
+	}
+	combined := make([]xml.Attr, 0, len(*attrs)+len(*namespaces))
+	for _, attr := range *attrs {
+		if attr.Name.Space != "xmlns" && attr.Name.Local != "xmlns" {
+			combined = append(combined, attr)
 		}
 	}
-	return marshalAttrs(bindings)
+	for _, binding := range *namespaces {
+		if binding.Name.Space == "xmlns" {
+			combined = append(combined, binding)
+		}
+		if binding.Name == (xml.Name{Local: "xmlns"}) && binding.Value != walker.target {
+			*inner = bindChildNamespace(*inner, binding.Value, parent)
+		}
+	}
+	*attrs = marshalAttrs(combined)
+}
+
+func (walker namespaceWalker) raw(element *rawEl, scope []xml.Attr, parent string) {
+	if element != nil {
+		walker.leaf(&element.Attrs, &element.Namespaces, &element.Inner, scope, parent)
+	}
+}
+
+func (walker namespaceWalker) rawElements(elements []rawEl, scope []xml.Attr, parent string) {
+	for index := range elements {
+		walker.raw(&elements[index], scope, parent)
+	}
+}
+
+func (walker namespaceWalker) anyElements(elements []anyEl, scope []xml.Attr) {
+	for index := range elements {
+		element := &elements[index]
+		walker.leaf(&element.Attrs, &element.Namespaces, &element.Inner, scope, "")
+	}
+}
+
+func (walker namespaceWalker) ad(ad *vastAd, inherited []xml.Attr) {
+	scope := walker.container(&ad.Attrs, inherited)
+	walker.inline(ad.InLine, scope)
+	walker.wrapper(ad.Wrapper, scope)
+}
+
+func (walker namespaceWalker) inline(inline *vastInLine, inherited []xml.Attr) {
+	if inline == nil {
+		return
+	}
+	scope := walker.container(&inline.Attrs, inherited)
+	walker.raw(inline.AdSystem, scope, "AdSystem")
+	walker.rawElements(inline.Errors, scope, "Error")
+	walker.extensions(inline.Extensions, scope)
+	walker.rawElements(inline.Impressions, scope, "Impression")
+	walker.viewable(inline.ViewableImpr, scope)
+	walker.raw(inline.AdServingID, scope, "AdServingId")
+	walker.raw(inline.AdTitle, scope, "AdTitle")
+	walker.verifications(inline.AdVerifications, scope)
+	walker.raw(inline.Advertiser, scope, "Advertiser")
+	walker.rawElements(inline.Categories, scope, "Category")
+	walker.creatives(inline.Creatives, scope)
+	walker.raw(inline.Description, scope, "Description")
+	walker.raw(inline.Expires, scope, "Expires")
+	walker.raw(inline.Survey, scope, "Survey")
+	walker.anyElements(inline.Other, scope)
+}
+
+func (walker namespaceWalker) wrapper(wrapper *vastWrapper, inherited []xml.Attr) {
+	if wrapper == nil {
+		return
+	}
+	scope := walker.container(&wrapper.Attrs, inherited)
+	walker.raw(wrapper.AdSystem, scope, "AdSystem")
+	walker.raw(wrapper.Advertiser, scope, "Advertiser")
+	walker.raw(wrapper.VASTAdTagURI, scope, "VASTAdTagURI")
+	walker.rawElements(wrapper.Impressions, scope, "Impression")
+	walker.rawElements(wrapper.Errors, scope, "Error")
+	walker.viewable(wrapper.ViewableImpr, scope)
+	walker.verifications(wrapper.AdVerifications, scope)
+	walker.creatives(wrapper.Creatives, scope)
+	walker.extensions(wrapper.Extensions, scope)
+	walker.anyElements(wrapper.Other, scope)
+}
+
+func (walker namespaceWalker) viewable(viewable *viewableImpression, inherited []xml.Attr) {
+	if viewable != nil {
+		scope := walker.container(&viewable.Attrs, inherited)
+		walker.anyElements(viewable.Items, scope)
+	}
+}
+
+func (walker namespaceWalker) verifications(verifications *adVerifications, inherited []xml.Attr) {
+	if verifications != nil {
+		scope := walker.container(&verifications.Attrs, inherited)
+		walker.rawElements(verifications.Verification, scope, "Verification")
+		walker.anyElements(verifications.Other, scope)
+	}
+}
+
+func (walker namespaceWalker) extensions(extensions *extensions, inherited []xml.Attr) {
+	if extensions != nil {
+		scope := walker.container(&extensions.Attrs, inherited)
+		walker.rawElements(extensions.Extension, scope, "Extension")
+		walker.anyElements(extensions.Other, scope)
+	}
+}
+
+func (walker namespaceWalker) creatives(creatives *vastCreatives, inherited []xml.Attr) {
+	if creatives == nil {
+		return
+	}
+	scope := walker.container(&creatives.Attrs, inherited)
+	for index := range creatives.Creative {
+		creative := &creatives.Creative[index]
+		creativeScope := walker.container(&creative.Attrs, scope)
+		walker.raw(creative.CreativeExtensions, creativeScope, "CreativeExtensions")
+		walker.linear(creative.Linear, creativeScope)
+		walker.rawElements(creative.UniversalAdIDs, creativeScope, "UniversalAdId")
+		walker.anyElements(creative.Other, creativeScope)
+	}
+}
+
+func (walker namespaceWalker) linear(linear *vastLinear, inherited []xml.Attr) {
+	if linear == nil {
+		return
+	}
+	scope := walker.container(&linear.Attrs, inherited)
+	if icons := linear.Icons; icons != nil {
+		iconScope := walker.container(&icons.Attrs, scope)
+		walker.rawElements(icons.Icon, iconScope, "Icon")
+	}
+	if tracking := linear.TrackingEvents; tracking != nil {
+		trackingScope := walker.container(&tracking.Attrs, scope)
+		walker.rawElements(tracking.Tracking, trackingScope, "Tracking")
+		walker.anyElements(tracking.Other, trackingScope)
+	}
+	walker.raw(linear.AdParameters, scope, "AdParameters")
+	walker.raw(linear.Duration, scope, "Duration")
+	walker.raw(linear.MediaFiles, scope, "MediaFiles")
+	if clicks := linear.VideoClicks; clicks != nil {
+		clickScope := walker.container(&clicks.Attrs, scope)
+		walker.rawElements(clicks.ClickTracking, clickScope, "ClickTracking")
+		walker.raw(clicks.ClickThrough, clickScope, "ClickThrough")
+		walker.rawElements(clicks.CustomClicks, clickScope, "CustomClick")
+		walker.anyElements(clicks.Other, clickScope)
+	}
+	walker.anyElements(linear.Other, scope)
+}
+
+func bindChildNamespace(inner, namespace, parent string) string {
+	decoder := xml.NewDecoder(strings.NewReader(inner))
+	var output strings.Builder
+	depth, copied := 0, 0
+	for {
+		token, err := decoder.RawToken()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return inner
+		}
+		switch element := token.(type) {
+		case xml.StartElement:
+			if depth == 0 {
+				hasDefault := false
+				if namespace == "" || namespace == "http://www.iab.com/VAST" {
+					hasDefault = element.Name.Space == "" && standardRawChild(parent, element.Name.Local)
+				}
+				for _, attr := range element.Attr {
+					if attr.Name == (xml.Name{Local: "xmlns"}) {
+						hasDefault = true
+					}
+				}
+				if !hasDefault {
+					position := int(decoder.InputOffset()) - 1
+					if inner[position-1] == '/' {
+						position--
+					}
+					output.WriteString(inner[copied:position])
+					output.WriteString(` xmlns="`)
+					output.WriteString(xmlAttrEscape(namespace))
+					output.WriteByte('"')
+					copied = position
+				}
+			}
+			depth++
+		case xml.EndElement:
+			depth--
+		}
+	}
+	output.WriteString(inner[copied:])
+	return output.String()
+}
+
+func standardRawChild(parent, child string) bool {
+	var children []string
+	switch parent {
+	case "MediaFiles":
+		children = []string{"MediaFile", "Mezzanine", "InteractiveCreativeFile", "ClosedCaptionFiles"}
+	case "Verification":
+		children = []string{"ExecutableResource", "JavaScriptResource", "TrackingEvents", "VerificationParameters"}
+	case "CreativeExtensions":
+		children = []string{"CreativeExtension"}
+	case "Icon":
+		children = []string{"IconClicks", "IconViewTracking", "StaticResource", "IFrameResource", "HTMLResource"}
+	}
+	return slices.Contains(children, child)
 }
 
 // elementText decodes XML character data and trims surrounding whitespace.

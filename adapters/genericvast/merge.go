@@ -2,21 +2,20 @@ package genericvast
 
 import (
 	"encoding/xml"
+	"slices"
 	"strings"
 )
 
 // wrapperTracking accumulates the mergeable elements pulled from the <Wrapper> ads
 // encountered while unwrapping, to be folded into the resolved <InLine>.
 type wrapperTracking struct {
-	impressions   []rawEl
-	errors        []rawEl
-	viewable      []anyEl
-	verification  []rawEl
-	extensions    []rawEl
-	tracking      []rawEl
-	clickTracking []rawEl
-	customClicks  []rawEl
-	adSystems     []string
+	impressions  []rawEl
+	errors       []rawEl
+	viewable     []anyEl
+	verification []rawEl
+	extensions   []rawEl
+	creatives    []vastCreative
+	adSystems    []string
 }
 
 func (t *wrapperTracking) merge(o wrapperTracking) {
@@ -25,9 +24,7 @@ func (t *wrapperTracking) merge(o wrapperTracking) {
 	t.viewable = append(t.viewable, o.viewable...)
 	t.verification = append(t.verification, o.verification...)
 	t.extensions = append(t.extensions, o.extensions...)
-	t.tracking = append(t.tracking, o.tracking...)
-	t.clickTracking = append(t.clickTracking, o.clickTracking...)
-	t.customClicks = append(t.customClicks, o.customClicks...)
+	t.creatives = append(t.creatives, o.creatives...)
 	t.adSystems = append(t.adSystems, o.adSystems...)
 }
 
@@ -51,13 +48,7 @@ func collectWrapperTracking(w *vastWrapper) wrapperTracking {
 			if c.Linear == nil {
 				continue
 			}
-			if c.Linear.TrackingEvents != nil {
-				t.tracking = append(t.tracking, c.Linear.TrackingEvents.Tracking...)
-			}
-			if c.Linear.VideoClicks != nil {
-				t.clickTracking = append(t.clickTracking, c.Linear.VideoClicks.ClickTracking...)
-				t.customClicks = append(t.customClicks, c.Linear.VideoClicks.CustomClicks...)
-			}
+			t.creatives = append(t.creatives, c)
 		}
 	}
 	return t
@@ -82,6 +73,8 @@ func mergeIntoInLine(in *vastInLine, t wrapperTracking) {
 			in.ViewableImpr = &viewableImpression{}
 		}
 		in.ViewableImpr.Items = append(in.ViewableImpr.Items, t.viewable...)
+		order := map[string]int{"Viewable": 0, "NotViewable": 1, "ViewUndetermined": 2}
+		slices.SortStableFunc(in.ViewableImpr.Items, func(left, right anyEl) int { return order[left.XMLName.Local] - order[right.XMLName.Local] })
 	}
 	if len(t.verification) > 0 {
 		if in.AdVerifications == nil {
@@ -95,23 +88,71 @@ func mergeIntoInLine(in *vastInLine, t wrapperTracking) {
 		}
 		in.Extensions.Extension = append(in.Extensions.Extension, t.extensions...)
 	}
-	if len(t.tracking) > 0 || len(t.clickTracking) > 0 || len(t.customClicks) > 0 {
-		if lin := in.firstLinear(); lin != nil {
-			if len(t.tracking) > 0 {
-				if lin.TrackingEvents == nil {
-					lin.TrackingEvents = &trackingEvents{}
-				}
-				lin.TrackingEvents.Tracking = append(lin.TrackingEvents.Tracking, t.tracking...)
-			}
-			if len(t.clickTracking) > 0 || len(t.customClicks) > 0 {
-				if lin.VideoClicks == nil {
-					lin.VideoClicks = &videoClicks{}
-				}
-				lin.VideoClicks.ClickTracking = append(lin.VideoClicks.ClickTracking, t.clickTracking...)
-				lin.VideoClicks.CustomClicks = append(lin.VideoClicks.CustomClicks, t.customClicks...)
+	if in.Creatives == nil {
+		return
+	}
+	for index := range in.Creatives.Creative {
+		creative := &in.Creatives.Creative[index]
+		if creative.Linear == nil {
+			continue
+		}
+		for _, wrapper := range slices.Backward(t.creatives) {
+			if wrapper.Sequence == "" || wrapper.Sequence == creative.Sequence {
+				mergeIcons(creative.Linear, wrapper.Linear)
 			}
 		}
+		for _, wrapper := range t.creatives {
+			if wrapper.Sequence != "" && wrapper.Sequence != creative.Sequence {
+				continue
+			}
+			mergeLinearTracking(creative.Linear, wrapper.Linear)
+		}
 	}
+}
+
+func mergeLinearTracking(terminal, wrapper *vastLinear) {
+	if wrapper.TrackingEvents != nil && len(wrapper.TrackingEvents.Tracking) > 0 {
+		if terminal.TrackingEvents == nil {
+			terminal.TrackingEvents = &trackingEvents{}
+		}
+		terminal.TrackingEvents.Tracking = append(terminal.TrackingEvents.Tracking, wrapper.TrackingEvents.Tracking...)
+	}
+	if wrapper.VideoClicks != nil && (len(wrapper.VideoClicks.ClickTracking) > 0 || len(wrapper.VideoClicks.CustomClicks) > 0) {
+		if terminal.VideoClicks == nil {
+			terminal.VideoClicks = &videoClicks{}
+		}
+		terminal.VideoClicks.ClickTracking = append(terminal.VideoClicks.ClickTracking, wrapper.VideoClicks.ClickTracking...)
+		terminal.VideoClicks.CustomClicks = append(terminal.VideoClicks.CustomClicks, wrapper.VideoClicks.CustomClicks...)
+	}
+}
+
+func mergeIcons(terminal, wrapper *vastLinear) {
+	if wrapper.Icons == nil {
+		return
+	}
+	if terminal.Icons == nil {
+		terminal.Icons = &vastIcons{}
+	}
+	programs := make(map[string]bool)
+	for _, icon := range terminal.Icons.Icon {
+		programs[iconProgram(icon)] = true
+	}
+	for _, icon := range wrapper.Icons.Icon {
+		program := iconProgram(icon)
+		if program == "" || !programs[program] {
+			terminal.Icons.Icon = append(terminal.Icons.Icon, icon)
+			programs[program] = true
+		}
+	}
+}
+
+func iconProgram(icon rawEl) string {
+	for _, attr := range icon.Attrs {
+		if attr.Name == (xml.Name{Local: "program"}) {
+			return attr.Value
+		}
+	}
+	return ""
 }
 
 // firstLinear returns the first <Linear> across the InLine's creatives, or nil.
@@ -148,6 +189,14 @@ func marshalMergedVAST(doc *vastDoc, ad *vastAd) (string, error) {
 	if version == "" {
 		version = "4.0"
 	}
+	target := ""
+	for _, attr := range doc.Attrs {
+		if attr.Name == (xml.Name{Local: "xmlns"}) {
+			target = attr.Value
+		}
+	}
+	walker := namespaceWalker{output: true, target: target}
+	walker.ad(ad, nil)
 	out := outVAST{
 		Version: version,
 		Attrs:   marshalAttrs(doc.Attrs),

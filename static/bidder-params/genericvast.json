@@ -7,13 +7,17 @@
     "url": {
       "type": "string",
       "description": "The full URL the adapter will call (verbatim) to fetch a VAST response.",
-      "format": "uri",
       "minLength": 1
     },
     "cpm": {
       "type": "number",
       "description": "Fallback CPM (EUR) used only when the VAST response does not declare a CPM <Pricing> element.",
       "minimum": 0
+    },
+    "unwrap": {
+      "type": "boolean",
+      "description": "When true, VAST <Wrapper> ads are unwrapped by recursively fetching VASTAdTagURI until an <InLine> is reached, merging wrapper tracking into the final VAST.",
+      "default": false
     }
   },
   "required": ["url", "cpm"]

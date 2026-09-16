@@ -155,19 +155,6 @@ func iconProgram(icon rawEl) string {
 	return ""
 }
 
-// firstLinear returns the first <Linear> across the InLine's creatives, or nil.
-func (in *vastInLine) firstLinear() *vastLinear {
-	if in.Creatives == nil {
-		return nil
-	}
-	for i := range in.Creatives.Creative {
-		if in.Creatives.Creative[i].Linear != nil {
-			return in.Creatives.Creative[i].Linear
-		}
-	}
-	return nil
-}
-
 // outVAST is the marshaling envelope for a single merged inline ad.
 type outVAST struct {
 	XMLName xml.Name   `xml:"VAST"`

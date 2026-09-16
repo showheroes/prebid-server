@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,6 +49,30 @@ func staticFetcher(body string) vastFetcher {
 	return func(_ context.Context, _ string, _ time.Duration, _ http.Header) ([]byte, error) {
 		return []byte(body), nil
 	}
+}
+
+// unwrapVAST parses initial and resolves its wrapper chain; test-only convenience
+// wrapper around parseVAST + unwrapDocument, which is how production code (MakeBids)
+// invokes unwrapping for an already-decoded single ad.
+func unwrapVAST(fetch vastFetcher, initial []byte, headers http.Header, deadline time.Time) (string, bool) {
+	doc, err := parseVAST(initial)
+	if err != nil || len(doc.Ads) == 0 {
+		return "", false
+	}
+	return unwrapDocument(fetch, doc, headers, deadline)
+}
+
+// firstLinear returns the first <Linear> across the InLine's creatives, or nil.
+func (in *vastInLine) firstLinear() *vastLinear {
+	if in.Creatives == nil {
+		return nil
+	}
+	for i := range in.Creatives.Creative {
+		if in.Creatives.Creative[i].Linear != nil {
+			return in.Creatives.Creative[i].Linear
+		}
+	}
+	return nil
 }
 
 func TestUnwrapNamespaceContexts(t *testing.T) {
@@ -992,5 +1018,52 @@ func TestNewHTTPFetcherNon200(t *testing.T) {
 	fetch := newHTTPFetcher(srv.Client())
 	if _, err := fetch(context.Background(), srv.URL, time.Second, nil); err == nil {
 		t.Fatalf("expected error on non-200 response")
+	}
+}
+
+// TestRaceMakeBidsUnwrapMultipleAds unwraps many Ads concurrently (run with -race) to
+// catch data races in the shared state read by each per-Ad goroutine in buildBids
+// (fwdHeaders, fallback CPM, deadline).
+func TestRaceMakeBidsUnwrapMultipleAds(t *testing.T) {
+	const adCount = 64
+	var wrappers strings.Builder
+	wrappers.WriteString(`<VAST version="4.2">`)
+	for i := range adCount {
+		fmt.Fprintf(&wrappers, `<Ad id="w%d"><Wrapper><VASTAdTagURI>https://downstream.example.com/%d</VASTAdTagURI></Wrapper></Ad>`, i, i)
+	}
+	wrappers.WriteString(`</VAST>`)
+
+	var fetches atomic.Int64
+	fetch := func(_ context.Context, uri string, _ time.Duration, _ http.Header) ([]byte, error) {
+		fetches.Add(1)
+		id := strings.TrimPrefix(uri, "https://downstream.example.com/")
+		return []byte(`<VAST><Ad id="inline` + id + `"><InLine><Creatives><Creative><Linear><Duration>00:00:05</Duration></Linear></Creative></Creatives></InLine></Ad></VAST>`), nil
+	}
+
+	a := &adapter{fetch: fetch, now: time.Now}
+	request := &openrtb2.BidRequest{
+		TMax: 2000,
+		Imp:  []openrtb2.Imp{{ID: "imp", Ext: json.RawMessage(`{"bidder":{"unwrap":true,"cpm":2}}`)}},
+	}
+	response, errs := a.MakeBids(request, &adapters.RequestData{Headers: http.Header{}}, &adapters.ResponseData{StatusCode: http.StatusOK, Body: []byte(wrappers.String())})
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if len(response.Bids) != adCount {
+		t.Fatalf("got %d bids, want %d", len(response.Bids), adCount)
+	}
+	if got := fetches.Load(); got != adCount {
+		t.Errorf("fetches = %d, want %d", got, adCount)
+	}
+	seen := make(map[string]bool, adCount)
+	for i, bid := range response.Bids {
+		want := fmt.Sprintf("inline%d", i)
+		if bid.Bid.ID != want {
+			t.Errorf("bid %d id = %q, want %q", i, bid.Bid.ID, want)
+		}
+		if seen[bid.Bid.ID] {
+			t.Errorf("duplicate bid id %q", bid.Bid.ID)
+		}
+		seen[bid.Bid.ID] = true
 	}
 }

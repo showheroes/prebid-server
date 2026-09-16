@@ -236,9 +236,8 @@ func collectBidderResponse(results []adResult) *adapters.BidderResponse {
 // buildBid constructs a single result for one <Ad>, unwrapping it first when requested.
 // It returns a nil bid when the unwrap chain must be dropped.
 func (a *adapter) buildBid(ad *vastAd, impID string, i int, version string, headers http.Header, deadline time.Time, fallback float64, unwrap bool) adResult {
-	adm := reemitAd(version, ad)
-	fields := ad
-
+	var adm string
+	var fields *vastAd
 	if unwrap {
 		merged, ok := unwrapDocument(a.fetch, &vastDoc{Version: version, Ads: []vastAd{*ad}}, headers, deadline)
 		if !ok {
@@ -250,6 +249,9 @@ func (a *adapter) buildBid(ad *vastAd, impID string, i int, version string, head
 		}
 		adm = merged
 		fields = &mdoc.Ads[0]
+	} else {
+		adm = reemitAd(version, ad)
+		fields = ad
 	}
 
 	// Price is taken only from the first fetched VAST, never from unwrapped hops.

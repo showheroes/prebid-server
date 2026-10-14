@@ -14,7 +14,7 @@ This document describes how to work with the ShowHeroes fork of Prebid Server.
 | `master` | Tracks upstream changes from `prebid/prebid-server`. **Do not commit directly.** |
 | `release` | Production branch based on a specific upstream tag. All PRs should target this branch. |
 
-**Current upstream tag:** `v3.30.0`
+**Current upstream tag:** `v4.10.0`
 
 > **Note:** The `release` branch is intentionally **not** in sync with `origin/master`. It is based on a specific tagged release from upstream. This means `origin/master` contains commits that `release` does not have, and this is expected until we decide to upgrade to a newer tag.
 
@@ -147,7 +147,7 @@ The `release` branch is based on a specific upstream tag. Upgrading to a new ver
 
 4. **Create an upgrade branch from the new tag:**
    ```bash
-   git checkout -b upgrade/v3.31.0 v3.31.0
+   git checkout -b upgrade_v4.10.0 v4.10.0
    ```
 
 5. **Rebase our customizations on top of the new tag:**
@@ -176,8 +176,8 @@ Our fork releases are patch versions on top of the upstream tag.
 
 ### Tagging Convention
 
-- Upstream tag: `v3.30.0`
-- Our releases: `v3.30.1`, `v3.30.2`, etc.
+- Upstream tag: `v4.10.0`
+- Our releases: `v4.10.1`, `v4.10.2`, etc.
 
 ### Creating a Release
 

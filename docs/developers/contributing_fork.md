@@ -135,25 +135,30 @@ The `release` branch is based on a specific upstream tag. Upgrading to a new ver
    git fetch origin --tags
    ```
 
-2. **Identify the target tag:**
+2. **Push tags to fork:**
+   ```bash
+   git push fork --tags
+   ```
+
+3. **Identify the target tag:**
    ```bash
    git tag -l 'v*' | sort -V | tail -20
    ```
 
-3. **Create an upgrade branch from the new tag:**
+4. **Create an upgrade branch from the new tag:**
    ```bash
    git checkout -b upgrade/v3.31.0 v3.31.0
    ```
 
-4. **Rebase our customizations on top of the new tag:**
+5. **Rebase our customizations on top of the new tag:**
    ```bash
    git pull fork release --rebase
    # Resolve conflicts carefully - preserve our customizations
    ```
 
-5. **Test thoroughly** before merging to `release`
+6. **Test thoroughly** before merging to `release`
 
-6. **Update this document** with the new current upstream tag
+7. **Update this document** with the new current upstream tag
 
 ## Conflict Resolution
 

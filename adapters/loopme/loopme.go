@@ -12,6 +12,8 @@ import (
 	"github.com/prebid/prebid-server/v4/openrtb_ext"
 )
 
+const bidderCurrency = "USD"
+
 type adapter struct {
 	endpoint string
 }
@@ -23,6 +25,23 @@ func (a *adapter) MakeRequests(request *openrtb2.BidRequest, reqInfo *adapters.E
 
 	for _, imp := range request.Imp {
 		requestCopy := *request
+		// only USD is supported
+		if len(requestCopy.Cur) > 0 {
+			requestCopy.Cur = []string{bidderCurrency}
+		}
+
+		resolvedBidFloor, err := resolveBidFloor(imp.BidFloor, imp.BidFloorCur, reqInfo)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		// force USD
+		imp.BidFloor = resolvedBidFloor
+		imp.BidFloorCur = ""
+		if imp.BidFloor > 0.0 {
+			imp.BidFloorCur = bidderCurrency
+		}
+
 		requestCopy.Imp = []openrtb2.Imp{imp}
 		reqJSON, err := json.Marshal(requestCopy)
 		if err != nil {
@@ -113,4 +132,13 @@ func Builder(bidderName openrtb_ext.BidderName, cfg config.Adapter, serverCfg co
 		endpoint: cfg.Endpoint,
 	}
 	return bidder, nil
+}
+
+// resolveBidFloor function returns converted price for the bidfloor, if the incoming request is not in USD. It's a copy from the 'rubicon' bidder
+func resolveBidFloor(bidFloor float64, bidFloorCur string, reqInfo *adapters.ExtraRequestInfo) (float64, error) {
+	if bidFloor > 0 && bidFloorCur != "" && bidFloorCur != bidderCurrency {
+		return reqInfo.ConvertCurrency(bidFloor, bidFloorCur, bidderCurrency)
+	}
+
+	return bidFloor, nil
 }

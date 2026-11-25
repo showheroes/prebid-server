@@ -32,6 +32,12 @@ type telariaBidExt struct {
 	Extra json.RawMessage `json:"extra,omitempty"`
 }
 
+// telariaResponseBidExt is the part of seatbid.bid.ext returned by Telaria we care about.
+// Telaria sends the deal ID in ext.dealid instead of the standard OpenRTB bid.dealid.
+type telariaResponseBidExt struct {
+	DealID string `json:"dealid"`
+}
+
 // Checker method to ensure len(request.Imp) > 0
 func (a *TelariaAdapter) CheckHasImps(request *openrtb2.BidRequest) error {
 	if len(request.Imp) == 0 {
@@ -300,12 +306,29 @@ func (a *TelariaAdapter) MakeBids(internalRequest *openrtb2.BidRequest, external
 
 	for i := range sb.Bid {
 		bid := sb.Bid[i]
+		if bid.DealID == "" {
+			bid.DealID = getDealIDFromBidExt(bid.Ext)
+		}
 		bidResponse.Bids = append(bidResponse.Bids, &adapters.TypedBid{
 			Bid:     &bid,
 			BidType: openrtb_ext.BidTypeVideo,
 		})
 	}
 	return bidResponse, nil
+}
+
+// getDealIDFromBidExt returns the deal ID found in bid.ext.dealid, or an empty string
+// if the ext is missing, has no deal ID or cannot be parsed. A malformed ext must not
+// cause an otherwise valid bid to be dropped.
+func getDealIDFromBidExt(bidExt json.RawMessage) string {
+	if len(bidExt) == 0 {
+		return ""
+	}
+	var ext telariaResponseBidExt
+	if err := jsonutil.Unmarshal(bidExt, &ext); err != nil {
+		return ""
+	}
+	return ext.DealID
 }
 
 // Builder builds a new instance of the Telaria adapter for the given bidder with the given config.
